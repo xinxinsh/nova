@@ -37,6 +37,7 @@ from nova.api.openstack import wsgi
 from nova.api import validation
 from nova import compute
 from nova.compute import flavors
+from nova.compute import vm_states
 from nova import exception
 from nova.i18n import _
 from nova.i18n import _LW
@@ -521,6 +522,17 @@ class ServersController(wsgi.Controller):
         context = req.environ['nova.context']
         authorize(context, action="show")
         instance = self._get_server(context, req, id, is_detail=True)
+
+        # it sets vm_state and task_state,this value is temp and only
+        # show vm status ,the purpose of  getting mmediately status
+        # other compute node it sets instance task_state none it sets
+        # instance vm_state unmanaged
+        self.compute_api.update_instances_vm_status_by_cache(context)
+
+        if instance.host in self.compute_api.instances_vm_status:
+            instance.vm_state = vm_states.UNMANAGED
+            instance.task_state = "none"
+
         return self._view_builder.show(req, instance)
 
     @wsgi.response(202)

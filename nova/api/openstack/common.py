@@ -127,6 +127,9 @@ _STATE_MAP = {
     vm_states.FROZEN: {
         'default': 'FROZEN',
     },
+    vm_states.UNMANAGED: {
+        'default': 'UNMANAGED',
+    },
 }
 
 
