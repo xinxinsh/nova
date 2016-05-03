@@ -2120,3 +2120,8 @@ class OsInfoNotFound(NotFound):
 
 class BuildRequestNotFound(NotFound):
     msg_fmt = _("BuildRequest not found for instance %(uuid)s")
+
+
+class QgaExecuteFailure(NovaException):
+    msg_fmt = _("Qga execute fail for instance %(instance)s, method: "
+                "%(method)s, error: %(error)s")
