@@ -1065,3 +1065,53 @@ class ComputeAPI(object):
         cctxt = self.client.prepare(server=_compute_host(None, instance),
                 version=version)
         return cctxt.cast(ctxt, "trigger_crash_dump", instance=instance)
+
+    def get_usb_host_list(self, ctxt, host):
+        version = '4.6'
+        cctxt = self.client.prepare(server=host, version=version)
+        return cctxt.call(ctxt, 'get_usb_host_list')
+
+    def get_usb_vm_status(self, ctxt, host, usb_vid, usb_pid):
+        version = '4.6'
+        cctxt = self.client.prepare(server=host, version=version)
+        return cctxt.call(ctxt, 'get_usb_vm_status',
+                          usb_vid=usb_vid,
+                          usb_pid=usb_pid)
+
+    def usb_shared(self, ctxt, host, usb_vid,
+                   usb_pid, usb_port, shared):
+        version = '4.6'
+        cctxt = self.client.prepare(server=host, version=version)
+        cctxt.call(ctxt, 'usb_shared',
+                   usb_vid=usb_vid,
+                   usb_pid=usb_pid,
+                   usb_port=usb_port,
+                   shared=shared)
+
+    def usb_mapped(self, ctxt, src_host_name, dst_host_name,
+                   usb_vid, usb_pid, usb_port, mapped):
+        version = '4.6'
+        cctxt = self.client.prepare(server=dst_host_name, version=version)
+        cctxt.call(ctxt, 'usb_mapped',
+                   src_host_name=src_host_name,
+                   usb_vid=usb_vid,
+                   usb_pid=usb_pid,
+                   usb_port=usb_port,
+                   mapped=mapped)
+
+    def usb_mounted(self, ctxt, instance, host, usb_vid, usb_pid, mounted):
+        version = '4.6'
+        cctxt = self.client.prepare(server=host, version=version)
+        cctxt.call(ctxt, 'usb_mounted',
+                   instance=instance,
+                   usb_vid=usb_vid,
+                   usb_pid=usb_pid,
+                   mounted=mounted)
+
+    def usb_status(self, ctxt, instance, host, usb_vid, usb_pid):
+        version = '4.6'
+        cctxt = self.client.prepare(server=host, version=version)
+        return cctxt.call(ctxt, 'usb_status',
+                          instance=instance,
+                          usb_vid=usb_vid,
+                          usb_pid=usb_pid)

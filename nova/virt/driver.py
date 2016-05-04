@@ -1593,6 +1593,25 @@ class ComputeDriver(object):
         """
         return instance.get('host')
 
+    def get_usb_host_list(self, context):
+        raise NotImplementedError()
+
+    def usb_shared(self, context, usb_vid, usb_pid, usb_port, shared):
+        raise NotImplementedError()
+
+    def usb_mapped(self, context, src_host_name, usb_vid, usb_pid,
+                   usb_port, mapped):
+        raise NotImplementedError()
+
+    def usb_mounted(self, context, instance, usb_vid, usb_pid, mounted):
+        raise NotImplementedError()
+
+    def usb_status(self, context, instance, usb_vid, usb_pid):
+        raise NotImplementedError()
+
+    def get_usb_vm_status(self, context, usb_vid, usb_pid):
+        raise NotImplementedError()
+
 
 def load_compute_driver(virtapi, compute_driver=None):
     """Load a compute driver module.

@@ -1,0 +1,452 @@
+#   Copyright 2013 OpenStack Foundation
+#
+#   Licensed under the Apache License, Version 2.0 (the "License"); you may
+#   not use this file except in compliance with the License. You may obtain
+#   a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#   WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#   License for the specific language governing permissions and limitations
+#   under the License.
+
+
+from nova.api.openstack import common
+from nova.api.openstack import extensions
+from nova.api.openstack import wsgi
+from nova import compute
+from nova.compute import power_state
+from nova.compute import vm_states
+from nova import exception
+from nova.i18n import _
+from oslo_log import log as logging
+import webob
+from webob import exc
+
+LOG = logging.getLogger(__name__)
+
+ALIAS = "os-usb_mapping"
+authorize = extensions.os_compute_authorizer(ALIAS)
+
+
+class UsbMappingController(wsgi.Controller):
+    def __init__(self, *args, **kwargs):
+        super(UsbMappingController, self).__init__(*args, **kwargs)
+        self.compute_api = compute.API()
+        self.host_api = compute.HostAPI()
+
+    def _get_hosts(self, context):
+        """Returns a list of hosts"""
+
+        hosts = []
+        try:
+            filters = {'disabled': False, 'binary': 'nova-compute'}
+            services = self.host_api.service_get_all(context, filters)
+
+            for s in services:
+                hosts.append(s['host'])
+        except exception.NotFound as e:
+            raise exc.HTTPNotFound(explanation=e.format_message())
+
+        return hosts
+
+    def index(self, req):
+        """Returns a usb_host_list of all host"""
+
+        context = req.environ['nova.context']
+        authorize(context)
+
+        usb_host_list = []
+        try:
+            hosts = self._get_hosts(context)
+            for host in hosts:
+                host_info = dict()
+
+                host_info['hostname'] = host
+                usb_list = self.compute_api.get_usb_host_list(context, host)
+
+                for i in range(len(usb_list)):
+                    if 'in use by' in usb_list[i]['usb_host_status']:
+                        usb_host = usb_list[i]['usb_host_status'].split()[3]
+                    else:
+                        usb_host = host
+                    usb_list[i]['usb_vm_status'] = \
+                        self.compute_api.get_usb_vm_status(
+                            context,
+                            usb_host,
+                            usb_list[i]['usb_vid'],
+                            usb_list[i]['usb_pid'])
+
+                host_info['usb_list'] = usb_list
+
+                usb_host_list.append(host_info)
+        except exception.NotFound as e:
+            raise exc.HTTPNotFound(explanation=e.format_message())
+
+        return {'usb_host_list': usb_host_list}
+
+    def usb_shared(self, req, body):
+        """Set the usb device for shared state"""
+
+        context = req.environ['nova.context']
+        authorize(context)
+
+        if not self.is_valid_body(body, 'usb_shared'):
+            msg = (_("Missing required element '%s' in request body") %
+                   'set_shared')
+            raise exc.HTTPBadRequest(explanation=msg)
+        usb_shared = body.get("usb_shared", {})
+
+        host_name = usb_shared.get("host_name")
+        if not host_name:
+            msg = _("'host_name' must be specified")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+        usb_vid = usb_shared.get("usb_vid")
+        if not usb_vid:
+            msg = _("'usb_vid' must be specified")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+        usb_pid = usb_shared.get("usb_pid")
+        if not usb_pid:
+            msg = _("'usb_pid' must be specified")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+        usb_port = usb_shared.get("usb_port")
+        if not usb_port:
+            msg = _("'usb_port' must be specified")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+        shared = usb_shared.get("shared")
+        if not shared:
+            msg = _("'shared' must be specified")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+        hosts = self._get_hosts(context)
+        if host_name not in hosts:
+            msg = _("host:%s is not found or is down") % host_name
+            raise exc.HTTPNotFound(explanation=msg)
+
+        # check the USB status in real time
+        try:
+            usb_list = self.compute_api.get_usb_host_list(context, host_name)
+        except exception.NotFound as e:
+            raise exc.HTTPNotFound(explanation=e.format_message())
+
+        usb_available = False
+        msg_err = ''
+        for usb_info in usb_list:
+            if(usb_info['usb_vid'] == usb_vid
+               and usb_info['usb_pid'] == usb_pid
+               and usb_info['usb_port'] == usb_port):
+
+                usb_available = True
+                if((shared == "True"
+                    and usb_info['usb_host_status'] != 'plugged')
+                   or(shared == "False"
+                      and usb_info['usb_host_status'] != 'plugged, shared')):
+                    msg_err = ('host:[%s] usb [Vid %s Pid %s Port %s] is in '
+                               'wrong state[%s]') % \
+                              (host_name, usb_vid,
+                               usb_pid, usb_port,
+                               usb_info['usb_host_status'])
+
+        if not usb_available:
+            msg_err = ('host:[%s] usb [Vid %s Pid %s Port %s] can not be '
+                       'found') % (host_name, usb_vid, usb_pid, usb_port)
+
+        if msg_err != '':
+            raise exc.HTTPNotFound(explanation=msg_err)
+
+        self.compute_api.usb_shared(context,
+                                    host_name,
+                                    usb_vid,
+                                    usb_pid,
+                                    usb_port,
+                                    shared)
+
+        return webob.Response(status_int=200)
+
+    def usb_mapped(self, req, body):
+        """Set the usb device from source host remote map to the other host"""
+
+        context = req.environ['nova.context']
+        authorize(context)
+
+        if not self.is_valid_body(body, 'usb_mapped'):
+            msg = (_("Missing required element '%s' in request body") %
+                   'usb_mapped')
+            raise exc.HTTPBadRequest(explanation=msg)
+        usb_mapped = body.get("usb_mapped", {})
+
+        src_host_name = usb_mapped.get("src_host_name")
+        if not src_host_name:
+            msg = _("'src_host_name' must be specified")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+        dst_host_name = usb_mapped.get("dst_host_name")
+        if not dst_host_name:
+            msg = _("'dst_host_name' must be specified")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+        usb_vid = usb_mapped.get("usb_vid")
+        if not usb_vid:
+            msg = _("'usb_vid' must be specified")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+        usb_pid = usb_mapped.get("usb_pid")
+        if not usb_pid:
+            msg = _("'usb_pid' must be specified")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+        usb_port = usb_mapped.get("usb_port")
+        if not usb_port:
+            msg = _("'usb_port' must be specified")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+        mapped = usb_mapped.get("mapped")
+        if not mapped:
+            msg = _("'mapped' must be specified")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+        hosts = self._get_hosts(context)
+        if src_host_name not in hosts:
+            msg = _("host:%s is not found or is down") % src_host_name
+            raise exc.HTTPNotFound(explanation=msg)
+        if dst_host_name not in hosts:
+            msg = _("host:%s is not found or is down") % dst_host_name
+            raise exc.HTTPNotFound(explanation=msg)
+
+        # check the USB status in real time
+        try:
+            usb_list = self.compute_api.get_usb_host_list(context,
+                                                          src_host_name)
+        except exception.NotFound as e:
+            raise exc.HTTPNotFound(explanation=e.format_message())
+
+        usb_available = False
+        msg_err = ''
+        for usb_info in usb_list:
+            if(usb_info['usb_vid'] == usb_vid
+               and usb_info['usb_pid'] == usb_pid
+               and usb_info['usb_port'] == usb_port):
+
+                usb_available = True
+                if((mapped == "True"
+                    and usb_info['usb_host_status'] != 'plugged, shared')
+                   or(mapped == "False"
+                      and _('in use by %s') % dst_host_name not in
+                            usb_info['usb_host_status'])):
+                    msg_err = ('host:[%s] usb [Vid %s Pid %s Port %s] is in '
+                               'wrong state[%s]') % \
+                              (src_host_name, usb_vid,
+                               usb_pid, usb_port,
+                               usb_info['usb_host_status'])
+
+        if not usb_available:
+            msg_err = ('host:[%s] usb [Vid %s Pid %s Port %s] can not be '
+                       'found') % (src_host_name, usb_vid, usb_pid, usb_port)
+
+        if msg_err != '':
+            raise exc.HTTPNotFound(explanation=msg_err)
+
+        self.compute_api.usb_mapped(context,
+                                    src_host_name,
+                                    dst_host_name,
+                                    usb_vid,
+                                    usb_pid,
+                                    usb_port,
+                                    mapped)
+
+        return webob.Response(status_int=200)
+
+    def _check_usb_dynamically(self, context, src_host_name,
+                               dst_host_name, usb_vid, usb_pid):
+
+        hosts = self._get_hosts(context)
+        if src_host_name not in hosts:
+            msg = _("host:%s is not found or is down") % src_host_name
+            raise exc.HTTPNotFound(explanation=msg)
+        if dst_host_name not in hosts:
+            msg = _("host:%s is not found or is down") % dst_host_name
+            raise exc.HTTPNotFound(explanation=msg)
+
+        # check the USB status in real time
+        try:
+            usb_list = self.compute_api.get_usb_host_list(context,
+                                                          src_host_name)
+        except exception.NotFound as e:
+            raise exc.HTTPNotFound(explanation=e.format_message())
+
+        usb_available = False
+        msg_err = ''
+        for usb_info in usb_list:
+            if(usb_info['usb_vid'] == usb_vid
+               and usb_info['usb_pid'] == usb_pid):
+
+                usb_available = True
+                if src_host_name == dst_host_name:
+                    if 'not plugged' in usb_info['usb_host_status']:
+                        msg_err = ('host:[%s] usb [Vid %s Pid %s] can not be '
+                                   'found') % (src_host_name, usb_vid,
+                                               usb_pid)
+
+                else:
+                    if _('in use by %s') % dst_host_name not in \
+                            usb_info['usb_host_status']:
+                        msg_err = ('host:[%s] usb [Vid %s Pid %s] is in wrong '
+                                   'state[%s]') % (src_host_name,
+                                                   usb_vid, usb_pid,
+                                                   usb_info['usb_host_status'])
+
+        if not usb_available:
+            msg_err = ('host:[%s] usb [Vid %s Pid %s] can not be '
+                       'found') % (src_host_name,
+                                   usb_vid,
+                                   usb_pid)
+
+        if msg_err != '':
+            raise exc.HTTPNotFound(explanation=msg_err)
+
+    def usb_mounted(self, req, body):
+        """Mount the usb device to the local instance"""
+
+        context = req.environ['nova.context']
+        authorize(context)
+
+        if not self.is_valid_body(body, 'usb_mounted'):
+            msg = (_("Missing required element '%s' in request body") %
+                   'usb_mounted')
+            raise exc.HTTPBadRequest(explanation=msg)
+        usb_mounted = body.get("usb_mounted", {})
+
+        src_host_name = usb_mounted.get("src_host_name")
+        if not src_host_name:
+            msg = _("'src_host_name' must be specified")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+        dst_host_name = usb_mounted.get("dst_host_name")
+        if not dst_host_name:
+            dst_host_name = src_host_name
+
+        usb_vid = usb_mounted.get("usb_vid")
+        if not usb_vid:
+            msg = _("'usb_vid' must be specified")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+        usb_pid = usb_mounted.get("usb_pid")
+        if not usb_pid:
+            msg = _("'usb_pid' must be specified")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+        instance_id = usb_mounted.get("instance_id")
+        if not instance_id:
+            msg = _("'instance_id' must be specified")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+        mounted = usb_mounted.get("mounted")
+        if not mounted:
+            msg = _("'mounted' must be specified")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+        instance = common.get_instance(self.compute_api,
+                                       context,
+                                       instance_id,
+                                       want_objects=True)
+
+        if(instance['vm_state'] != vm_states.ACTIVE
+           or instance['power_state'] != power_state.RUNNING
+           or instance['task_state'] is not None):
+            raise exception.InstanceNotReady(instance_id=instance['uuid'])
+
+        self._check_usb_dynamically(context, src_host_name,
+                                    dst_host_name, usb_vid, usb_pid)
+
+        self.compute_api.usb_mounted(context,
+                                     instance,
+                                     dst_host_name,
+                                     usb_vid,
+                                     usb_pid,
+                                     mounted)
+
+        return webob.Response(status_int=200)
+
+    def usb_status(self, req, body):
+        """Get usb device status from the instance"""
+
+        context = req.environ['nova.context']
+        authorize(context)
+
+        if not self.is_valid_body(body, 'usb_status'):
+            msg = (_("Missing required element '%s' in request body") %
+                   'usb_status')
+            raise exc.HTTPBadRequest(explanation=msg)
+        usb_status = body.get("usb_status", {})
+
+        src_host_name = usb_status.get("src_host_name")
+        if not src_host_name:
+            msg = _("'src_host_name' must be specified")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+        dst_host_name = usb_status.get("dst_host_name")
+        if not dst_host_name:
+            dst_host_name = src_host_name
+
+        usb_vid = usb_status.get("usb_vid")
+        if not usb_vid:
+            msg = _("'usb_vid' must be specified")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+        usb_pid = usb_status.get("usb_pid")
+        if not usb_pid:
+            msg = _("'usb_pid' must be specified")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+        instance_id = usb_status.get("instance_id")
+        if not instance_id:
+            msg = _("'instance_id' must be specified")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+        instance = common.get_instance(self.compute_api,
+                                       context,
+                                       instance_id,
+                                       want_objects=True)
+
+        if(instance['vm_state'] != vm_states.ACTIVE
+           or instance['power_state'] != power_state.RUNNING
+           or instance['task_state'] is not None):
+            raise exception.InstanceNotReady(instance_id=instance['uuid'])
+
+        self._check_usb_dynamically(context, src_host_name,
+                                    dst_host_name, usb_vid, usb_pid)
+
+        status = self.compute_api.usb_status(context,
+                                             instance,
+                                             dst_host_name,
+                                             usb_vid,
+                                             usb_pid)
+
+        return {'usb_status': status}
+
+
+# Note: The class name is as it has to be for this to be loaded as an
+# extension--only first character capitalized.
+class UsbMapping(extensions.ExtensionDescriptor):
+    """Usb actions between hosts and instances"""
+
+    name = "UsbMapping"
+    alias = ALIAS
+    version = 1
+
+    def get_resources(self):
+        actions = {'usb_shared': 'POST',
+                   'usb_mapped': 'POST',
+                   'usb_mounted': 'POST',
+                   "usb_status": 'POST'}
+        resources = extensions.ResourceExtension(ALIAS,
+                                                 UsbMappingController(),
+                                                 collection_actions=actions)
+
+        return [resources]
