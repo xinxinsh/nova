@@ -75,7 +75,7 @@ allocation_ratio_opts = [
              'set on the scheduler node(s) will be used '
              'and defaulted to 16.0'),
     cfg.FloatOpt('ram_allocation_ratio',
-        default=0.0,
+        default=1.0,
         help='Virtual ram to physical ram allocation ratio which affects '
              'all ram filters. This configuration specifies a global ratio '
              'for RamFilter. For AggregateRamFilter, it will fall back to '
