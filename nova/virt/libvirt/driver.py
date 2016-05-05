@@ -4279,11 +4279,23 @@ class LibvirtDriver(driver.ComputeDriver):
         guest.add_device(rng_device)
 
     def _set_qemu_guest_agent(self, guest, flavor, instance, image_meta):
+        qga_enabled = True
         # Enable qga only if the 'hw_qemu_guest_agent' is equal to yes
-        if image_meta.properties.get('hw_qemu_guest_agent', False):
-            LOG.debug("Qemu guest agent is enabled through image "
-                      "metadata", instance=instance)
-            self._add_qga_device(guest, instance)
+        # if image_meta.properties.get('hw_qemu_guest_agent', False):
+        #     LOG.debug("Qemu guest agent is enabled through image "
+        #               "metadata", instance=instance)
+        #     self._add_qga_device(guest, instance)
+        if qga_enabled:
+            qga = vconfig.LibvirtConfigGuestChannel()
+            qga.type = "unix"
+            # NOTE(linlh) Change org.qemu.guest_agent.0 to
+            # org.qemu.guest_agent.1,
+            # as org.qemu.guest_agent.0 is using by libvirt self
+            qga.target_name = "org.qemu.guest_agent.1"
+            qga.source_path = ("/var/lib/libvirt/qemu/%s.agent" %
+                               instance['uuid'])
+            guest.add_device(qga)
+
         rng_is_virtio = image_meta.properties.get('hw_rng_model') == 'virtio'
         rng_allowed_str = flavor.extra_specs.get('hw_rng:allowed', '')
         rng_allowed = strutils.bool_from_string(rng_allowed_str)
