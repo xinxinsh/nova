@@ -35,6 +35,7 @@ import mmap
 import operator
 import os
 import shutil
+import socket
 import tempfile
 import time
 import uuid
@@ -7787,3 +7788,206 @@ class LibvirtDriver(driver.ComputeDriver):
     def is_supported_fs_format(self, fs_type):
         return fs_type in [disk.FS_FORMAT_EXT2, disk.FS_FORMAT_EXT3,
                            disk.FS_FORMAT_EXT4, disk.FS_FORMAT_XFS]
+
+    def _check_usbclient_list(self, usb_name):
+
+        try:
+            out, err = libvirt_utils.execute('usbclnt', '-l')
+            if err:
+                msg = _('usbclnt: usbclnt -l error \nError:%s') % err
+                raise exception.NovaException(msg)
+        except Exception:
+            msg = _('usbclnt -l error')
+            raise exception.NovaException(msg)
+
+        output = [line.strip() for line in out.splitlines()]
+        for line_num in range(len(output)):
+            if(usb_name in output[line_num]
+               and 'Mode: manual-connect   Status: connected' in
+                    output[line_num + 2]):
+                return True
+
+        return False
+
+    def get_usb_host_list(self, context):
+
+        try:
+            out, err = libvirt_utils.execute('usbsrv', '-l')
+            if err:
+                msg = _('usbsrv: get_usb_host_list error \nError:%s') % err
+                raise exception.NovaException(msg)
+        except Exception:
+            msg = _('usbsrv -l error')
+            raise exception.NovaException(msg)
+
+        usb_list = []
+        output = [line.strip() for line in out.splitlines()]
+
+        for line_num in range((len(output) - 6) / 4):
+            output_num = 4 * (line_num + 1)
+
+            if('Keyboard' in output[output_num]
+               or 'Mouse' in output[output_num]):
+                continue
+            else:
+                usb_device = {}
+
+                if self._check_usbclient_list(
+                        output[output_num].split(': ')[1].strip()):
+                    continue
+
+                usb_device['usb_name'] = \
+                    output[output_num].lstrip()[3:].strip()
+
+                usb_info = output[output_num + 1].split()
+                usb_device['usb_vid'] = usb_info[1]
+                usb_device['usb_pid'] = usb_info[3]
+                usb_device['usb_port'] = usb_info[5]
+
+                if 'in use by' in output[output_num + 2]:
+                    host_ip = output[output_num + 2].split()[4].strip()
+                    host_name = socket.gethostbyaddr(host_ip)[0]
+                    usb_device['usb_host_status'] = _('in use by %s') % \
+                                                    host_name
+                elif 'not plugged' in output[output_num + 2]:
+                    continue
+                else:
+                    usb_device['usb_host_status'] = \
+                        output[output_num + 2].split(':')[1].strip()
+
+                usb_list.append(usb_device)
+
+        return usb_list
+
+    def usb_shared(self, context, usb_vid, usb_pid, usb_port, shared):
+
+        if shared == "True":
+            shared_flag = '-s'
+        else:
+            shared_flag = '-t'
+
+        try:
+            out, err = libvirt_utils.execute('usbsrv',
+                                             shared_flag,
+                                             '-vid', usb_vid,
+                                             '-pid', usb_pid,
+                                             '-usbport', usb_port)
+            if err:
+                msg = _('usbsrv: set shared error \nError:%s') % err
+                raise exception.NovaException(msg)
+        except Exception:
+            msg = _('usbsrv error')
+            raise exception.NovaException(msg)
+
+    def usb_mapped(self, context, src_host_name, usb_vid, usb_pid,
+                   usb_port, mapped):
+
+        src_host_ip = socket.gethostbyname(src_host_name)
+        if not src_host_ip:
+            msg = _('get hostip through hostname:%s error') % src_host_name
+            raise exception.NovaException(msg)
+
+        server_address = _('%s:32032') % src_host_ip
+
+        if mapped == "True":
+            mapped_flag = '-connect'
+
+            try:
+                out, err = libvirt_utils.execute('usbclnt',
+                                                 '-a',
+                                                 server_address)
+                if err:
+                    msg = _('usbclnt: usbclnt add usbserver error'
+                            ' \nError:%s') % err
+                    raise exception.NovaException(msg)
+            except Exception:
+                msg = _('usbsrv -a error')
+                raise exception.NovaException(msg)
+
+            time.sleep(1)
+
+        else:
+            mapped_flag = '-disconnect'
+
+        try:
+            out, err = libvirt_utils.execute('usbclnt',
+                                             mapped_flag,
+                                             '-server', server_address,
+                                             '-vid', usb_vid,
+                                             '-pid', usb_pid,
+                                             '-usbport', usb_port)
+            if err:
+                msg = _('usbclnt: usb mapped error \nError:%s') % err
+                raise exception.NovaException(msg)
+        except Exception:
+            msg = _('usbclnt error')
+            raise exception.NovaException(msg)
+
+    def _check_usb_xml(self, virt_dom, usb_vid, usb_pid):
+
+        try:
+            xml = virt_dom.XMLDesc(0)
+            tree = etree.fromstring(xml)
+
+            for hostdev in tree.findall("./devices/hostdev"):
+                if hostdev.get("type") == "usb":
+                    vendor = hostdev.find("./source/vendor")
+                    product = hostdev.find("./source/product")
+
+                    if(usb_vid in vendor.get("id")
+                       and usb_pid in product.get("id")):
+                        return True
+        except libvirt.libvirtError as e:
+            msg = _('get usb xml error: %s') % e
+            raise exception.NovaException(msg)
+
+        return False
+
+    def usb_mounted(self, context, instance, usb_vid, usb_pid, mounted):
+
+        usb_xml = '''
+        <hostdev mode='subsystem' type='usb' managed='yes'>
+            <source>
+                <vendor id='0x%s'/>
+                <product id='0x%s'/>
+            </source>
+        </hostdev>
+        ''' % (usb_vid, usb_pid)
+
+        try:
+            virt_dom = self._lookup_by_name(instance['name'])
+        except exception.InstanceNotFound:
+            raise exception.InstanceNotRunning(instance_id=instance['uuid'])
+
+        if mounted == 'True':
+            if not self._check_usb_xml(virt_dom, usb_vid, usb_pid):
+                try:
+                    virt_dom.attachDevice(usb_xml)
+                except libvirt.libvirtError as e:
+                    msg = _('usb attach error: %s') % e
+                    raise exception.NovaException(msg)
+        else:
+            try:
+                virt_dom.detachDevice(usb_xml)
+            except libvirt.libvirtError as e:
+                msg = _('usb detach error: %s') % e
+                raise exception.NovaException(msg)
+
+    def usb_status(self, context, instance, usb_vid, usb_pid):
+
+        try:
+            virt_dom = self._lookup_by_name(instance['name'])
+        except exception.InstanceNotFound:
+            raise exception.InstanceNotRunning(instance_id=instance['uuid'])
+
+        return self._check_usb_xml(virt_dom, usb_vid, usb_pid)
+
+    def get_usb_vm_status(self, context, usb_vid, usb_pid):
+
+        vm_uuid = ''
+        virt_doms = self._conn.listAllDomains()
+        for virt_dom in virt_doms:
+            if self._check_usb_xml(virt_dom, usb_vid, usb_pid):
+                vm_uuid = virt_dom.UUIDString()
+
+        return vm_uuid

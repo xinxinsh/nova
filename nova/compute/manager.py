@@ -6861,3 +6861,29 @@ class ComputeManager(manager.Manager):
                               error, instance=instance)
         image_meta = objects.ImageMeta.from_instance(instance)
         self.driver.unquiesce(context, instance, image_meta)
+
+    @wrap_exception()
+    def get_usb_host_list(self, context):
+        return self.driver.get_usb_host_list(context)
+
+    @wrap_exception()
+    def get_usb_vm_status(self, context, usb_vid, usb_pid):
+        return self.driver.get_usb_vm_status(context, usb_vid, usb_pid)
+
+    @wrap_exception()
+    def usb_shared(self, context, usb_vid, usb_pid, usb_port, shared):
+        self.driver.usb_shared(context, usb_vid, usb_pid, usb_port, shared)
+
+    @wrap_exception()
+    def usb_mapped(self, context, src_host_name, usb_vid, usb_pid,
+                   usb_port, mapped):
+        self.driver.usb_mapped(context, src_host_name, usb_vid,
+                               usb_pid, usb_port, mapped)
+
+    @wrap_exception()
+    def usb_mounted(self, context, instance, usb_vid, usb_pid, mounted):
+        self.driver.usb_mounted(context, instance, usb_vid, usb_pid, mounted)
+
+    @wrap_exception()
+    def usb_status(self, context, instance, usb_vid, usb_pid):
+        return self.driver.usb_status(context, instance, usb_vid, usb_pid)
