@@ -353,8 +353,7 @@ class UsbMappingController(wsgi.Controller):
 
         instance = common.get_instance(self.compute_api,
                                        context,
-                                       instance_id,
-                                       want_objects=True)
+                                       instance_id)
 
         if(instance['vm_state'] != vm_states.ACTIVE
            or instance['power_state'] != power_state.RUNNING
@@ -411,8 +410,7 @@ class UsbMappingController(wsgi.Controller):
 
         instance = common.get_instance(self.compute_api,
                                        context,
-                                       instance_id,
-                                       want_objects=True)
+                                       instance_id)
 
         if(instance['vm_state'] != vm_states.ACTIVE
            or instance['power_state'] != power_state.RUNNING
@@ -431,9 +429,7 @@ class UsbMappingController(wsgi.Controller):
         return {'usb_status': status}
 
 
-# Note: The class name is as it has to be for this to be loaded as an
-# extension--only first character capitalized.
-class UsbMapping(extensions.ExtensionDescriptor):
+class UsbMapping(extensions.V21APIExtensionBase):
     """Usb actions between hosts and instances"""
 
     name = "UsbMapping"
@@ -450,3 +446,6 @@ class UsbMapping(extensions.ExtensionDescriptor):
                                                  collection_actions=actions)
 
         return [resources]
+
+    def get_controller_extensions(self):
+        return []
