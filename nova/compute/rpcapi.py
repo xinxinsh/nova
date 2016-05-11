@@ -1115,3 +1115,34 @@ class ComputeAPI(object):
                           instance=instance,
                           usb_vid=usb_vid,
                           usb_pid=usb_pid)
+
+    def call_qga(self, ctxt, instance, cmd, async, timeout):
+        version = '4.6'
+        rpc_timeout = timeout + 5
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                                    version=version, timeout=rpc_timeout)
+        if async:
+            return cctxt.cast(ctxt, 'call_qga', instance=instance, cmd=cmd,
+                              timeout=timeout)
+        else:
+            return cctxt.call(ctxt, 'call_qga', instance=instance, cmd=cmd,
+                              timeout=timeout)
+
+    def get_qga_is_live(self, ctxt, instance):
+        version = '4.6'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                version=version)
+        return cctxt.call(ctxt, 'get_qga_is_live', instance=instance)
+
+    def setup_config_driver(self, ctxt, instance, files):
+        version = '4.6'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                version=version)
+        return cctxt.call(ctxt, 'setup_config_driver', instance=instance,
+                          files=files)
+
+    def ensure_detach_disk_config(self, ctxt, instance):
+        version = '4.6'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                version=version)
+        cctxt.call(ctxt, 'ensure_detach_disk_config', instance=instance)

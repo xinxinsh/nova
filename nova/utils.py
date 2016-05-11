@@ -35,6 +35,7 @@ import struct
 import sys
 import tempfile
 import time
+import urllib2
 from xml.sax import saxutils
 
 import eventlet
@@ -1473,3 +1474,10 @@ def isotime(at=None):
 
 def strtime(at):
     return at.strftime("%Y-%m-%dT%H:%M:%S.%f")
+
+
+def http_post(url, data, headers):
+    request = urllib2.Request(url, data)
+    for k, v in six.iteritems(headers):
+        request.add_header(k, v)
+    return urllib2.urlopen(request)

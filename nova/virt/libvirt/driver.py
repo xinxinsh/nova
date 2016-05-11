@@ -311,8 +311,21 @@ libvirt_opts = [
                'kernel (usually 1-99)')
     ]
 
+qga_proxy_opts = [
+    cfg.StrOpt('qga_proxy_host',
+               default='127.0.0.1',
+               help='The qga proxy server host'),
+    cfg.IntOpt('qga_proxy_port',
+               default=8500,
+               help='The qga proxy server port'),
+    cfg.IntOpt('timeout',
+               default=20,
+               help='Time out for accessing qga-proxy http API'),
+]
+
 CONF = nova.conf.CONF
 CONF.register_opts(libvirt_opts, 'libvirt')
+CONF.register_opts(qga_proxy_opts, group='qga_proxy')
 CONF.import_opt('host', 'nova.netconf')
 CONF.import_opt('my_ip', 'nova.netconf')
 CONF.import_opt('enabled', 'nova.compute.api',
@@ -507,6 +520,34 @@ MIN_QEMU_OTHER_ARCH = {arch.S390: MIN_QEMU_S390_VERSION,
                        arch.PPC64: MIN_QEMU_PPC64_VERSION,
                        arch.PPC64LE: MIN_QEMU_PPC64_VERSION,
                       }
+
+VIR_DOMAIN_NOSTATE = 0
+VIR_DOMAIN_RUNNING = 1
+VIR_DOMAIN_BLOCKED = 2
+VIR_DOMAIN_PAUSED = 3
+VIR_DOMAIN_SHUTDOWN = 4
+VIR_DOMAIN_SHUTOFF = 5
+VIR_DOMAIN_CRASHED = 6
+VIR_DOMAIN_PMSUSPENDED = 7
+
+LIBVIRT_POWER_STATE = {
+    VIR_DOMAIN_NOSTATE: power_state.NOSTATE,
+    VIR_DOMAIN_RUNNING: power_state.RUNNING,
+    # NOTE(maoy): The DOMAIN_BLOCKED state is only valid in Xen.
+    # It means that the VM is running and the vCPU is idle. So,
+    # we map it to RUNNING
+    VIR_DOMAIN_BLOCKED: power_state.RUNNING,
+    VIR_DOMAIN_PAUSED: power_state.PAUSED,
+    # NOTE(maoy): The libvirt API doc says that DOMAIN_SHUTDOWN
+    # means the domain is being shut down. So technically the domain
+    # is still running. SHUTOFF is the real powered off state.
+    # But we will map both to SHUTDOWN anyway.
+    # http://libvirt.org/html/libvirt-libvirt.html
+    VIR_DOMAIN_SHUTDOWN: power_state.SHUTDOWN,
+    VIR_DOMAIN_SHUTOFF: power_state.SHUTDOWN,
+    VIR_DOMAIN_CRASHED: power_state.CRASHED,
+    VIR_DOMAIN_PMSUSPENDED: power_state.SUSPENDED,
+}
 
 
 class LibvirtDriver(driver.ComputeDriver):
@@ -7991,3 +8032,138 @@ class LibvirtDriver(driver.ComputeDriver):
                 vm_uuid = virt_dom.UUIDString()
 
         return vm_uuid
+
+    def call_qga_proxy(self, instance, message, timeout=20):
+        if 'id' not in message['arguments']:
+            message['arguments']['id'] = str(uuid.uuid4())
+
+        msg_json = [jsonutils.dumps(message)]
+        post_data = jsonutils.dumps({instance.uuid: msg_json})
+
+        returnval = dict(state='qga_proxy_downtime')
+        try:
+            uri = 'http://%s:%s' % (CONF.qga_proxy.qga_proxy_host,
+                                    CONF.qga_proxy.qga_proxy_port)
+            headers = {'TIMEOUT': timeout, 'Content-Type': 'application/json'}
+
+            recv = utils.http_post(uri, post_data, headers)
+            body = recv.read().strip()
+            if recv.code != 200:
+                raise Exception("Send to qga proxf failed: %s" % body)
+        except Exception as e:
+            returnval['msg'] = e
+            return returnval
+
+        try:
+            r = jsonutils.loads(body)[0]['return']
+            return r
+        except Exception:
+            raise exception.QgaExecuteFailure(instance=instance.uuid,
+                                              error=body,
+                                              method=message['execute'])
+
+        LOG.info(_LI('Qga proxy execute %(msg)s successfully'),
+                 {'msg': message['execute']}, instance=instance)
+
+    def get_qga_is_live(self, instance):
+        uri = 'http://%s:%s/test_qga' % (
+            CONF.qga_proxy.qga_proxy_host, CONF.qga_proxy.qga_proxy_port)
+
+        returnval = dict(state='qga_proxy_downtime')
+        try:
+            recv = utils.http_post(uri, instance.uuid)
+            body = recv.read().strip()
+            if recv.code != 200:
+                raise Exception("Send to qga proxf failed: %s" % body)
+        except Exception as e:
+            returnval['msg'] = e
+            return returnval
+        return body
+
+    def setup_config_driver(self, instance, files):
+        with configdrive.ConfigDriveBuilder() as cdb:
+            configdrive_path = self._get_disk_config_path(instance)
+            LOG.info(_LI('Creating config drive at %(path)s'),
+                     {'path': configdrive_path}, instance=instance)
+            cdb.mdfiles = files
+            try:
+                if os.path.exists(configdrive_path):
+                    libvirt_utils.chown(configdrive_path, os.getuid())
+                cdb.make_drive(configdrive_path)
+                return True
+            except processutils.ProcessExecutionError as e:
+                with excutils.save_and_reraise_exception():
+                    LOG.error(_LE('Creating config drive failed '
+                                  'with error: %s'),
+                              e, instance=instance)
+                    return False
+
+    def _lookup_by_name(self, instance_name):
+        """Retrieve libvirt domain object given an instance name.
+
+        All libvirt error handling should be handled in this method and
+        relevant nova exceptions should be raised in response.
+
+        """
+        try:
+            return self._conn.lookupByName(instance_name)
+        except libvirt.libvirtError as ex:
+            error_code = ex.get_error_code()
+            if error_code == libvirt.VIR_ERR_NO_DOMAIN:
+                raise exception.InstanceNotFound(instance_id=instance_name)
+
+            msg = (_('Error from libvirt while looking up %(instance_name)s: '
+                     '[Error Code %(error_code)s] %(ex)s') %
+                   {'instance_name': instance_name,
+                    'error_code': error_code,
+                    'ex': ex})
+            raise exception.NovaException(msg)
+
+    def ensure_detach_disk_config(self, instance):
+        instance_name = instance['name']
+        try:
+            virt_dom = self._lookup_by_name(instance_name)
+
+            def _get_disk_xml_by_file(xml, basename):
+                try:
+                    doc = etree.fromstring(xml)
+                except Exception:
+                    return None
+                ret = doc.findall('./devices/disk')
+                for node in ret:
+                    for child in node.getchildren():
+                        if child.tag == 'source':
+                            f = child.get('file')
+                            if f and os.path.basename(f) == basename:
+                                child.set('file', '')
+                                return etree.tostring(node)
+            xml = _get_disk_xml_by_file(virt_dom.XMLDesc(0), 'disk.config')
+            if not xml:
+                LOG.info(_LI('Not disk.config driver found'))
+                return
+
+            else:
+                flags = libvirt.VIR_DOMAIN_AFFECT_CONFIG | \
+                        libvirt.VIR_DOMAIN_DEVICE_MODIFY_FORCE
+                state = LIBVIRT_POWER_STATE[virt_dom.info()[0]]
+                if state == power_state.RUNNING:
+                    flags |= libvirt.VIR_DOMAIN_AFFECT_LIVE
+
+                virt_dom.updateDeviceFlags(xml, flags)
+
+        except exception.InstanceNotFound:
+            # NOTE(zhaoqin): If the instance does not exist, _lookup_by_name()
+            #                will throw InstanceNotFound exception. Need to
+            #                disconnect volume under this circumstance.
+            LOG.warn(_LW("During detach disk.config, instance disappeared."))
+        except libvirt.libvirtError as ex:
+            # NOTE(vish): This is called to cleanup volumes after live
+            #             migration, so we should still disconnect even if
+            #             the instance doesn't exist here anymore.
+            error_code = ex.get_error_code()
+            if error_code == libvirt.VIR_ERR_NO_DOMAIN:
+                # NOTE(vish):
+                LOG.warn(_LW("During detach disk.config, instance "
+                             "disappeared."))
+            else:
+                raise

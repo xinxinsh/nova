@@ -1612,6 +1612,18 @@ class ComputeDriver(object):
     def get_usb_vm_status(self, context, usb_vid, usb_pid):
         raise NotImplementedError()
 
+    def call_qga_proxy(self, instance, message, timeout=20):
+        raise NotImplementedError()
+
+    def get_qga_is_live(self, instance):
+        raise NotImplementedError()
+
+    def setup_config_driver(self, instance, files):
+        raise NotImplementedError()
+
+    def ensure_detach_disk_config(self, instance):
+        raise NotImplementedError()
+
 
 def load_compute_driver(virtapi, compute_driver=None):
     """Load a compute driver module.
