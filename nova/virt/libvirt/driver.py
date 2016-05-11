@@ -4068,6 +4068,58 @@ class LibvirtDriver(driver.ComputeDriver):
                 return GuestNumaConfig(allowed_cpus, None,
                                        guest_cpu_numa_config, None)
 
+    def _check_instance_is_windows2003(self, context, block_device_info):
+        # support volume_type: leofs, rbd, fibre_channel, nfs, qcow2
+
+        block_device_mapping = driver.block_device_info_get_mapping(
+            block_device_info)
+
+        for vol in block_device_mapping:
+            if vol['mount_device'] == '/dev/vda':
+                if vol['connection_info']['driver_volume_type'] \
+                        in ['leofs', 'rbd', 'fibre_channel', 'nfs']:
+                    volume_id = vol['connection_info']['serial']
+                    # system volume info
+                    volume_info = self._volume_api.get(context, volume_id)
+
+                    # considering those snapshots/volumes which copy from
+                    # another region, get image_os_type from
+                    # volume_image_metadata firstly.
+                    volume_image_metadata = \
+                        volume_info['volume_image_metadata']
+                    if 'image_os_type' in volume_image_metadata:
+                        if volume_image_metadata['image_os_type'] == 'windows':
+                            return True
+                        else:
+                            return False
+
+                    # get image_id from volume_info
+                    image_id = volume_info['volume_image_metadata']['image_id']
+
+                    image_info = self._image_api.get(context, image_id)
+                    properties = image_info['properties']
+                    if 'image_os_type' in properties \
+                            and properties['image_os_type'] == 'windows':
+                        return True
+                elif vol['connection_info']['driver_volume_type'] == 'ext':
+                    volume_id = vol['connection_info']['serial']
+                    # system volume info
+                    volume_info = objects.ExtVolume.get_by_id(context,
+                                                              volume_id)
+
+                    # get image_id from volume_info
+                    image_id = volume_info['glance_image_id']
+
+                    image_info = self._image_api.get(context, image_id)
+                    properties = image_info['properties']
+                    if 'image_os_type' in properties \
+                            and properties['image_os_type'] == 'windows':
+                        return True
+                else:
+                    continue
+
+        return False
+
     def _get_guest_os_type(self, virt_type):
         """Returns the guest OS type based on virt type."""
         if virt_type == "lxc":
@@ -4110,17 +4162,22 @@ class LibvirtDriver(driver.ComputeDriver):
         if image_meta.properties.get("os_command_line"):
             guest.os_cmdline = image_meta.properties.os_command_line
 
-    def _set_clock(self, guest, os_type, image_meta, virt_type):
+    def _set_clock(self, context, instance,
+                   block_device_info, guest,
+                   os_type, image_meta, virt_type):
         # NOTE(mikal): Microsoft Windows expects the clock to be in
         # "localtime". If the clock is set to UTC, then you can use a
         # registry key to let windows know, but Microsoft says this is
         # buggy in http://support.microsoft.com/kb/2687252
         clk = vconfig.LibvirtConfigGuestClock()
-        if os_type == 'windows':
-            LOG.info(_LI('Configuring timezone for windows instance to '
-                         'localtime'))
+
+        if self._check_instance_is_windows2003(context, block_device_info):
+            LOG.info(_LI('Configuring timezone for windows 2003 instance to '
+                         'localtime'), instance=instance)
             clk.offset = 'localtime'
         else:
+            LOG.info(_LI('Configuring timezone for linux instance to '
+                         'utc'), instance=instance)
             clk.offset = 'utc'
         guest.set_clock(clk)
 
@@ -4583,7 +4640,8 @@ class LibvirtDriver(driver.ComputeDriver):
                     instance, inst_path, image_meta, disk_info)
 
         self._set_features(guest, instance.os_type, caps, virt_type)
-        self._set_clock(guest, instance.os_type, image_meta, virt_type)
+        self._set_clock(context, instance, block_device_info,
+                        guest, instance.os_type, image_meta, virt_type)
 
         storage_configs = self._get_guest_storage_config(
                 instance, image_meta, disk_info, rescue, block_device_info,
