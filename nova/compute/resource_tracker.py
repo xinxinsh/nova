@@ -561,8 +561,14 @@ class ResourceTracker(object):
                             'numa_topology',
                             'flavor', 'migration_context'])
 
+        # NOTE: to skip _update_usage_from_instances
+        memory_mb_used = resources['memory_mb_used']
+
         # Now calculate usage based on instance utilization:
         self._update_usage_from_instances(context, instances)
+
+        # NOTE: save it back, need to consider migration usage
+        resources['memory_mb_used'] = memory_mb_used
 
         # Grab all in-progress migrations:
         migrations = objects.MigrationList.get_in_progress_by_host_and_node(
@@ -571,10 +577,16 @@ class ResourceTracker(object):
         self._pair_instances_to_migrations(migrations, instances)
         self._update_usage_from_migrations(context, migrations)
 
+        # NOTE: to skip _update_usage_from_orphans
+        memory_mb_used = resources['memory_mb_used']
+
         # Detect and account for orphaned instances that may exist on the
         # hypervisor, but are not in the DB:
         orphans = self._find_orphaned_instances()
         self._update_usage_from_orphans(orphans)
+
+        # NOTE: save it back
+        resources['memory_mb_used'] = memory_mb_used
 
         # NOTE(yjiang5): Because pci device tracker status is not cleared in
         # this periodic task, and also because the resource tracker is not
@@ -593,6 +605,9 @@ class ResourceTracker(object):
         # TODO(pmurray): metrics should not be a json string in ComputeNode,
         # but it is. This should be changed in ComputeNode
         self.compute_node.metrics = jsonutils.dumps(metrics)
+
+        resources['free_ram_mb'] = (resources['memory_mb'] -
+                                    resources['memory_mb_used'])
 
         # update the compute_node
         self._update(context)
