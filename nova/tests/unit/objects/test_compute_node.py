@@ -87,7 +87,7 @@ fake_compute_node = {
     'supported_instances': fake_supported_hv_specs_db_format,
     'pci_stats': fake_pci,
     'cpu_allocation_ratio': 16.0,
-    'ram_allocation_ratio': 1.5,
+    'ram_allocation_ratio': 1.0,
     'disk_allocation_ratio': 1.0,
     }
 # FIXME(sbauza) : For compatibility checking, to be removed once we are sure
@@ -528,7 +528,7 @@ class _TestComputeNodeObject(object):
         compute = cls._from_db_object(self.context, cls(), compute_dict)
 
         self.assertEqual(16.0, compute.cpu_allocation_ratio)
-        self.assertEqual(1.5, compute.ram_allocation_ratio)
+        self.assertEqual(1.0, compute.ram_allocation_ratio)
         self.assertEqual(1.0, compute.disk_allocation_ratio)
 
     def test_compat_allocation_ratios_old_compute_default_values(self):
@@ -541,7 +541,7 @@ class _TestComputeNodeObject(object):
         compute = cls._from_db_object(self.context, cls(), compute_dict)
 
         self.assertEqual(16.0, compute.cpu_allocation_ratio)
-        self.assertEqual(1.5, compute.ram_allocation_ratio)
+        self.assertEqual(1.0, compute.ram_allocation_ratio)
         self.assertEqual(1.0, compute.disk_allocation_ratio)
 
 
