@@ -503,20 +503,33 @@ class VolumeAttachTestsV21(test.NoDBTestCase):
                           FAKE_UUID,
                           FAKE_UUID_C)
 
+    # not need to test root ,root is available to detach
     @mock.patch('nova.objects.BlockDeviceMapping.is_root',
                  new_callable=mock.PropertyMock)
     def test_detach_vol_root(self, mock_isroot):
+        self.stubs.Set(compute_api.API,
+                       'detach_volume',
+                       fake_detach_volume)
         req = fakes.HTTPRequest.blank(
                   '/v2/servers/id/os-volume_attachments/uuid')
         req.method = 'DELETE'
         req.headers['content-type'] = 'application/json'
         req.environ['nova.context'] = self.context
         mock_isroot.return_value = True
-        self.assertRaises(exc.HTTPForbidden,
-                          self.attachments.delete,
-                          req,
-                          FAKE_UUID,
-                          FAKE_UUID_A)
+        result = self.attachments.delete(req, FAKE_UUID, FAKE_UUID_A)
+        # NOTE: on v2.1, http status code is set as wsgi_code of API
+        # method instead of status_int in a response object.
+        if isinstance(self.attachments,
+                      volumes_v21.VolumeAttachmentController):
+            status_int = self.attachments.delete.wsgi_code
+        else:
+            status_int = result.status_int
+        self.assertEqual(202, status_int)
+        # self.assertRaises(exc.HTTPForbidden,
+        #                  self.attachments.delete,
+        #                  req,
+        #                  FAKE_UUID,
+        #                  FAKE_UUID_A)
 
     def test_detach_volume_from_locked_server(self):
         def fake_detach_volume_from_locked_server(self, context,
