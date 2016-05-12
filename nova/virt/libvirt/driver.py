@@ -3794,10 +3794,10 @@ class LibvirtDriver(driver.ComputeDriver):
 
         if context is not None:
             ometa = vconfig.LibvirtConfigGuestMetaNovaOwner()
-            ometa.userid = context.user_id
-            ometa.username = context.user_name
-            ometa.projectid = context.project_id
-            ometa.projectname = context.project_name
+            ometa.userid = instance["user_id"]
+            ometa.username = context.user_name or ''
+            ometa.projectid = instance["project_id"]
+            ometa.projectname = context.project_name or ''
             meta.owner = ometa
 
         fmeta = vconfig.LibvirtConfigGuestMetaNovaFlavor()
