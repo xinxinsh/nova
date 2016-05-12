@@ -77,6 +77,7 @@ from nova.i18n import _LE
 from nova.i18n import _LI
 from nova.i18n import _LW
 from nova import image
+from nova.image import glance
 from nova.network import model as network_model
 from nova import objects
 from nova.objects import fields
@@ -8167,3 +8168,130 @@ class LibvirtDriver(driver.ComputeDriver):
                              "disappeared."))
             else:
                 raise
+
+    def instance_actions(self, context, instance, action):
+
+        try:
+            virt_dom = self._lookup_by_name(instance['name'])
+        except exception.InstanceNotFound:
+            raise exception.InstanceNotRunning(instance_id=instance['uuid'])
+
+        if action == 'paused':
+            # suspend change power_state to 3
+            virt_dom.suspend()
+            instance.vm_state = 'paused'
+            instance.power_state = 3
+            instance.save()
+
+        if action == 'resume':
+            virt_dom.resume()
+            instance.vm_state = 'active'
+            instance.power_state = 1
+            instance.save()
+
+    def create_memory_snapshot(self, context, instance, image_meta,
+                               volume_mapping, vm_active, memory_file):
+
+        metadata = {
+            'is_public': False,
+            'status': 'active',
+            'properties': {
+                'kernel_id': instance['kernel_id'],
+                'image_state': 'available',
+                'owner_id': instance['project_id'],
+                'ramdisk_id': instance['ramdisk_id'],
+            }
+        }
+
+        metadata['disk_format'] = 'raw'
+        metadata['container_format'] = 'bare'
+
+        LOG.info(_LI("Memory snapshot image beginning upload"),
+                 instance=instance)
+
+        try:
+            virt_dom = self._lookup_by_name(instance['name'])
+        except exception.InstanceNotFound:
+            raise exception.InstanceNotRunning(instance_id=instance['uuid'])
+
+        if memory_file:
+            # save change power_state to 4 and vm_state to 'stopped'
+            virt_dom.save(memory_file)
+            time.sleep(3)
+
+            # verify volume snapshot sucessfully
+            for block in volume_mapping:
+                volume_snapshot = self._volume_api.get_snapshot(
+                    context,
+                    block['snapshot_id'])
+                if volume_snapshot['status'] != 'available':
+                    msg = _('volume snapshot %s has something '
+                            'error') % block['snapshot_id']
+                    raise exception.NovaException(msg)
+
+            try:
+                # restore only change power_state to 1,
+                # vm_state still 'stopped'
+                self._conn.restore(memory_file)
+
+                if vm_active:
+                    virt_dom.resume()
+                    instance.vm_state = 'active'
+                    instance.power_state = 1
+                else:
+                    # change vm_state and power_state to 'paused'
+                    # in the dashboard
+                    instance.vm_state = 'paused'
+                    instance.power_state = 3
+                instance.save()
+            except Exception:
+                msg = _('restore memory file error')
+                raise exception.NovaException(msg)
+
+            libvirt_utils.chown(memory_file, os.getuid())
+            with libvirt_utils.file_open(memory_file) as image_file:
+                self._image_api.update(context,
+                                       image_meta['id'],
+                                       metadata,
+                                       image_file)
+                LOG.info(_LI("Memory snapshot image upload complete"),
+                         instance=instance)
+
+            libvirt_utils.file_delete(memory_file)
+
+    def rollback_to_memory_snapshot(self, context, instance,
+                                    image_meta, memory_file):
+
+        if instance.vm_state != 'stopped':
+            msg = _('instance state must be stopped')
+            raise exception.NovaException(msg)
+
+        try:
+            virt_dom = self._lookup_by_name(instance['name'])
+        except exception.InstanceNotFound:
+            raise exception.InstanceNotRunning(instance_id=instance['uuid'])
+
+        image_service = glance.get_default_image_service()
+        image_service.download(context,
+                               image_meta['properties']['memory_snapshot_id'],
+                               dst_path=memory_file)
+
+        if memory_file:
+            try:
+                # restore only change power_state to 1,
+                # vm_state still 'stopped'
+                self._conn.restore(memory_file)
+                time.sleep(1)
+
+                # becase do the memory snapshot when the
+                # vm_state of instance is 'paused', so
+                # now resume
+                virt_dom.resume()
+                instance.vm_state = 'active'
+                instance.power_state = 1
+                instance.save()
+            except Exception:
+                msg = _('restore memory file error')
+                raise exception.NovaException(msg)
+            finally:
+                libvirt_utils.file_delete(memory_file)

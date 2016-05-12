@@ -6911,3 +6911,53 @@ class ComputeManager(manager.Manager):
         instance.config_drive = ''
         instance.save()
         self.driver.ensure_detach_disk_config(instance)
+
+    @wrap_exception()
+    @reverts_task_state
+    def instance_actions(self, context, instance, action):
+        self.driver.instance_actions(context, instance, action)
+
+    def _create_memory_file(self):
+        import os
+        snapshot_directory = '/var/lib/memory_snapshot'
+        if not os.path.isdir(snapshot_directory):
+            utils.execute('mkdir', snapshot_directory,
+                          run_as_root=True)
+            utils.execute('chmod', '777', snapshot_directory,
+                          run_as_root=True)
+
+        memory_name = uuid.uuid4().hex
+        memory_file = os.path.join(snapshot_directory, memory_name)
+
+        return memory_file
+
+    @wrap_exception()
+    @reverts_task_state
+    def create_memory_snapshot(self, context, instance, memory_image_meta,
+                               volume_mapping, vm_active):
+        instance.task_state = task_states.IMAGE_SNAPSHOT
+        instance.save()
+
+        self.driver.create_memory_snapshot(context,
+                                           instance,
+                                           memory_image_meta,
+                                           volume_mapping,
+                                           vm_active,
+                                           self._create_memory_file())
+
+        instance.task_state = None
+        instance.save()
+
+    @wrap_exception()
+    @reverts_task_state
+    def rollback_to_memory_snapshot(self, context, instance, image_meta):
+        instance.task_state = task_states.ROLLING_MEMORY_BACK
+        instance.save()
+
+        self.driver.rollback_to_memory_snapshot(context,
+                                                instance,
+                                                image_meta,
+                                                self._create_memory_file())
+
+        instance.task_state = None
+        instance.save()

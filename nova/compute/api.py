@@ -58,6 +58,7 @@ from nova.i18n import _LE
 from nova.i18n import _LI
 from nova.i18n import _LW
 from nova import image
+from nova.image import glance
 from nova import keymgr
 from nova import network
 from nova.network import model as network_model
@@ -2299,14 +2300,17 @@ class API(base.Base):
 
     # NOTE(melwitt): We don't check instance lock for snapshot because lock is
     #                intended to prevent accidental change/delete of instances
-    @check_instance_state(vm_state=[vm_states.ACTIVE, vm_states.STOPPED])
+    @check_instance_state(vm_state=[vm_states.ACTIVE,
+                                    vm_states.STOPPED,
+                                    vm_states.PAUSED])
     def snapshot_volume_backed(self, context, instance, name,
-                               extra_properties=None):
+                               extra_properties=None, memory_snapshot=False):
         """Snapshot the given volume-backed instance.
 
         :param instance: nova.objects.instance.Instance object
         :param name: name of the backup or snapshot
         :param extra_properties: dict of extra image properties to include
+        :param memory_snapshot: support the memory snapshot of instance
 
         :returns: the new image metadata
         """
@@ -2324,6 +2328,26 @@ class API(base.Base):
             properties.pop(key, None)
         if instance.root_device_name:
             properties['root_device_name'] = instance.root_device_name
+
+        if memory_snapshot:
+            instance.task_state = task_states.IMAGE_SNAPSHOT_PENDING
+            instance.save()
+
+            if instance.vm_state == 'active':
+                vm_active = True
+                LOG.info(_LI("Suspend the instance"))
+                self.compute_rpcapi.instance_actions(context,
+                                                     instance,
+                                                     action='paused')
+            elif instance.vm_state == 'paused':
+                vm_active = False
+            else:
+                msg = _('Instance is not running or paused')
+                raise exception.NovaException(msg)
+
+            instance = self.get(context, instance.uuid,
+                                want_objects=True,
+                                expected_attrs=None)
 
         quiesced = False
         if instance.vm_state == vm_states.ACTIVE:
@@ -2374,6 +2398,28 @@ class API(base.Base):
         if mapping:
             properties['block_device_mapping'] = mapping
             properties['bdm_v2'] = True
+
+        if memory_snapshot:
+            memory_snapshot_name = _('%s_memory_snapshot') % image_meta['name']
+            memory_image_meta = self._create_image(
+                context,
+                instance,
+                memory_snapshot_name,
+                'snapshot',
+                extra_properties=None)
+
+            self.compute_rpcapi.create_memory_snapshot(
+                context,
+                instance,
+                memory_image_meta,
+                mapping,
+                vm_active)
+
+            image_meta['properties']['memory_snapshot_id'] = \
+                memory_image_meta['id']
+            image_meta['properties']['is_volume'] = True
+            image_meta['properties']['image_type'] = 'snapshot'
+            image_meta['properties']['instance_uuid'] = instance['uuid']
 
         return self.image_api.create(context, image_meta)
 
@@ -3637,6 +3683,140 @@ class API(base.Base):
 
     def ensure_detach_disk_config(self, context, instance):
         self.compute_rpcapi.ensure_detach_disk_config(context, instance)
+
+    @wrap_check_policy
+    def get_snapshot_info(self, context, image_id):
+
+        image_service = glance.get_default_image_service()
+        image_meta = image_service.show(context, image_id)
+
+        snapshot_info = {}
+        if(image_meta['status'] == 'active'
+           and image_meta['properties']['image_type'] == 'snapshot'
+           and 'instance_uuid' in image_meta['properties']
+           and 'memory_snapshot_id' in image_meta['properties']):
+
+            snapshot_info['snapshot_id'] = image_id
+            snapshot_info['snapshot_status'] = image_meta['status']
+
+            snapshot_info['disk_snapshot'] = []
+
+            if image_meta['properties']['is_volume'] == 'True':
+                snapshot_info['disk_type'] = 'volume'
+                for block in image_meta['properties']['block_device_mapping']:
+                    snap = self.volume_api.get_snapshot(context,
+                                                        block['snapshot_id'])
+
+                    snapinfo = {}
+                    snapinfo['status'] = snap['status']
+                    snapinfo['disk_snapshot_id'] = snap['id']
+                    snapinfo['disk_display_name'] = snap['display_name']
+                    snapinfo['disk_display_description'] = \
+                        snap['display_description']
+                    snapinfo['source_volume_id'] = snap['volume_id']
+                    snapshot_info['disk_snapshot'].append(snapinfo)
+
+            meta = image_service.show(
+                context,
+                image_meta['properties']['memory_snapshot_id'])
+            snapshot_info['memory_snapshot'] = {}
+            snapshot_info['memory_snapshot']['memory_snapshot_id'] = meta['id']
+            snapshot_info['memory_snapshot']['memory_snapshot_name'] = \
+                meta['name']
+            snapshot_info['memory_snapshot']['status'] = meta['status']
+
+        return snapshot_info
+
+    @wrap_check_policy
+    def delete_vm_snapshot(self, context, image_id):
+
+        image_service = glance.get_default_image_service()
+        image_meta = image_service.show(context, image_id)
+
+        if(image_meta['status'] == 'active'
+           and image_meta['properties']['image_type'] == 'snapshot'
+           and 'memory_snapshot_id' in image_meta['properties']):
+
+            delete_error = False
+            msg = ''
+            try:
+                image_memory = image_service.show(
+                    context,
+                    image_meta['properties']['memory_snapshot_id'])
+                if image_memory['status'] == 'active':
+                    image_service.delete(
+                        context,
+                        image_meta['properties']['memory_snapshot_id'])
+
+                if image_memory['status'] == 'error_deleting':
+                    delete_error = True
+                    msg_memory = _("memory snapshot %s is in error_deleting status! ") % \
+                                 image_meta['properties']['memory_snapshot_id']
+                    msg = msg + msg_memory
+            except Exception:
+                delete_error = True
+                msg_memory = _("delete memory snapshot %s error! ") % \
+                             image_meta['properties']['memory_snapshot_id']
+                msg = msg + msg_memory
+
+            if 'block_device_mapping' in image_meta['properties']:
+                volume_snapshot = ''
+                for block in image_meta['properties']['block_device_mapping']:
+                    try:
+                        volume_snapshot = self.volume_api.get_snapshot(
+                            context,
+                            block['snapshot_id'])
+                    except Exception:
+                        pass
+
+                    if volume_snapshot != '':
+                        try:
+                            if volume_snapshot['status'] == 'available':
+                                self.volume_api.delete_snapshot(
+                                    context,
+                                    block['snapshot_id'])
+
+                            if volume_snapshot['status'] == 'error_deleting':
+                                delete_error = True
+                                msg_volume = _("volume snapshot %s is "
+                                               "in error_deleting status! ")\
+                                             % block['snapshot_id']
+                                msg = msg + msg_volume
+                        except Exception:
+                            delete_error = True
+                            msg_volume = _("delete volume snapshot %s error! ") % \
+                                         block['snapshot_id']
+                            msg = msg + msg_volume
+
+            if delete_error is not True:
+                try:
+                    image_main = image_service.show(context, image_id)
+                    if image_main['status'] == 'active':
+                        image_service.delete(context, image_id)
+
+                    if image_main['status'] == 'error_deleting':
+                        msg_snapshot = _("main snapshot %s is in "
+                                         "error_deleting status! ") % image_id
+                        msg = msg + msg_snapshot
+                except Exception:
+                    msg_snapshot = _("delete main snapshot %s error! ") % \
+                                   image_id
+                    return msg_snapshot
+
+            return msg
+        elif image_meta['status'] == 'deleted':
+            msg = (_('the snapshot of id:%s is not found') % image_id)
+            return msg
+        else:
+            msg = (_('the snapshot of id:%s is in the wrong state') % image_id)
+            return msg
+
+    @wrap_check_policy
+    @check_instance_state(vm_state=[vm_states.STOPPED])
+    def rollback_to_memory_snapshot(self, context, instance, image_meta):
+        self.compute_rpcapi.rollback_to_memory_snapshot(context,
+                                                        instance,
+                                                        image_meta)
 
 
 class HostAPI(base.Base):

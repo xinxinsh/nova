@@ -1624,6 +1624,17 @@ class ComputeDriver(object):
     def ensure_detach_disk_config(self, instance):
         raise NotImplementedError()
 
+    def instance_actions(self, context, instance, action):
+        raise NotImplementedError()
+
+    def create_memory_snapshot(self, context, instance, image_meta,
+                               volume_mapping, vm_active, memory_file):
+        raise NotImplementedError()
+
+    def rollback_to_memory_snapshot(self, context, instance,
+                                    image_meta, memory_file):
+        raise NotImplementedError()
+
 
 def load_compute_driver(virtapi, compute_driver=None):
     """Load a compute driver module.
