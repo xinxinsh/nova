@@ -3614,6 +3614,30 @@ class API(base.Base):
         return self.compute_rpcapi.usb_status(context, instance,
                                               host, usb_vid, usb_pid)
 
+    @wrap_check_policy
+    @check_instance_lock
+    def call_qga(self, context, instance, cmd, async, timeout):
+        return self.compute_rpcapi.call_qga(
+            context, instance, cmd, async, timeout=timeout)
+
+    @wrap_check_policy
+    @check_instance_lock
+    def get_qga_is_live(self, context, instance):
+        return self.compute_rpcapi.get_qga_is_live(context, instance)
+
+    @wrap_check_policy
+    @check_instance_lock
+    @check_instance_state(vm_state=[vm_states.STOPPED])
+    def setup_config_driver(self, context, instance, files):
+        instance.config_drive = True
+        instance.save()
+
+        return self.compute_rpcapi.setup_config_driver(context, instance,
+                                                       files)
+
+    def ensure_detach_disk_config(self, context, instance):
+        self.compute_rpcapi.ensure_detach_disk_config(context, instance)
+
 
 class HostAPI(base.Base):
     """Sub-set of the Compute Manager API for managing host operations."""

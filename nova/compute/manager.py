@@ -6887,3 +6887,27 @@ class ComputeManager(manager.Manager):
     @wrap_exception()
     def usb_status(self, context, instance, usb_vid, usb_pid):
         return self.driver.usb_status(context, instance, usb_vid, usb_pid)
+
+    @object_compat
+    @wrap_exception()
+    @wrap_instance_fault
+    def call_qga(self, context, instance, cmd, timeout=None):
+        return self.driver.call_qga_proxy(instance, cmd, timeout)
+
+    @object_compat
+    @wrap_exception()
+    @wrap_instance_fault
+    def get_qga_is_live(self, context, instance):
+        return self.driver.get_qga_is_live(instance)
+
+    @object_compat
+    @wrap_exception()
+    @wrap_instance_fault
+    def setup_config_driver(self, context, instance, files):
+        files = self._decode_files(files)
+        return self.driver.setup_config_driver(instance, files)
+
+    def ensure_detach_disk_config(self, context, instance):
+        instance.config_drive = ''
+        instance.save()
+        self.driver.ensure_detach_disk_config(instance)
