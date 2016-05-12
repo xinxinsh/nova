@@ -3711,6 +3711,26 @@ class LibvirtDriver(driver.ComputeDriver):
             scsi_controller.model = hw_scsi_model
             devices.append(scsi_controller)
 
+        # add usb controller by ouli
+        # url: http://people.freedesktop.org/~teuf/spice-doc/html/ch02s06
+        #
+        # otherwise, this code is copyed from virt-manager-master
+        # virt-manager-master code url:
+        # virt-manager-master/virtinst/devicecontroller.get_usb2_controllers
+
+        usb_controller_model = ['ich9-ehci1',
+                                'ich9-uhci1',
+                                'ich9-uhci2',
+                                'ich9-uhci3']
+        usb_master_startport = ['0', '2', '4']
+        for i in range(len(usb_controller_model)):
+            usb_controller = vconfig.LibvirtConfigGuestController()
+            usb_controller.source_model = usb_controller_model[i]
+            if usb_controller_model[i] != 'ich9-ehci1':
+                usb_controller.master_startport = \
+                    usb_master_startport[i - 1]
+            devices.append(usb_controller)
+
         return devices
 
     def _get_host_sysinfo_serial_hardware(self):

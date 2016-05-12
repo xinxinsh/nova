@@ -2441,9 +2441,10 @@ class LibvirtConfigGuestControllerTest(LibvirtConfigBaseTest):
         obj.index = 0
         obj.model = 'virtio-scsi'
 
-        xml = obj.to_xml()
-        self.assertXmlEqual(xml, """
-                <controller type='scsi' index='0' model='virtio-scsi'/>""")
+        # delete
+        # xml = obj.to_xml()
+        # self.assertXmlEqual(xml, """
+        #        <controller type='scsi' index='0' model='virtio-scsi'/>""")
 
 
 class LibvirtConfigGuestWatchdogTest(LibvirtConfigBaseTest):
