@@ -1146,3 +1146,30 @@ class ComputeAPI(object):
         cctxt = self.client.prepare(server=_compute_host(None, instance),
                 version=version)
         cctxt.call(ctxt, 'ensure_detach_disk_config', instance=instance)
+
+    def instance_actions(self, ctxt, instance, action):
+        version = '4.6'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                                    version=version)
+        cctxt.call(ctxt, 'instance_actions',
+                   instance=instance,
+                   action=action)
+
+    def create_memory_snapshot(self, ctxt, instance, memory_image_meta,
+                               volume_mapping, vm_active=False):
+        version = '4.6'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                                    version=version)
+        return cctxt.cast(ctxt, 'create_memory_snapshot',
+                          instance=instance,
+                          memory_image_meta=memory_image_meta,
+                          volume_mapping=volume_mapping,
+                          vm_active=vm_active)
+
+    def rollback_to_memory_snapshot(self, ctxt, instance, image_meta):
+        version = '4.6'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                                    version=version)
+        return cctxt.call(ctxt, 'rollback_to_memory_snapshot',
+                          instance=instance,
+                          image_meta=image_meta)

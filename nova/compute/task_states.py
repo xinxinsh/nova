@@ -115,3 +115,6 @@ UNSHELVING = 'unshelving'
 
 ALLOW_REBOOT = [None, REBOOTING, REBOOT_PENDING, REBOOT_STARTED, RESUMING,
                 REBOOTING_HARD, UNPAUSING, PAUSING, SUSPENDING]
+
+# possible task states during rollback_to_memory_snapshot()
+ROLLING_MEMORY_BACK = 'rolling_memory_back'
