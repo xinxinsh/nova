@@ -2685,7 +2685,7 @@ class LibvirtConnTestCase(test.NoDBTestCase):
 
         self.assertIsInstance(cfg.clock,
                               vconfig.LibvirtConfigGuestClock)
-        self.assertEqual(cfg.clock.offset, "localtime")
+        self.assertEqual(cfg.clock.offset, "utc")
 
         self.assertEqual(3, len(cfg.clock.timers), cfg.clock.timers)
         self.assertEqual("pit", cfg.clock.timers[0].name)
@@ -2712,7 +2712,7 @@ class LibvirtConnTestCase(test.NoDBTestCase):
 
         self.assertIsInstance(cfg.clock,
                               vconfig.LibvirtConfigGuestClock)
-        self.assertEqual(cfg.clock.offset, "localtime")
+        self.assertEqual(cfg.clock.offset, "utc")
 
         self.assertEqual(4, len(cfg.clock.timers), cfg.clock.timers)
         self.assertEqual("pit", cfg.clock.timers[0].name)
@@ -2752,7 +2752,7 @@ class LibvirtConnTestCase(test.NoDBTestCase):
 
         self.assertIsInstance(cfg.clock,
                               vconfig.LibvirtConfigGuestClock)
-        self.assertEqual(cfg.clock.offset, "localtime")
+        self.assertEqual(cfg.clock.offset, "utc")
 
         self.assertEqual(3, len(cfg.features))
         self.assertIsInstance(cfg.features[0],
@@ -2783,7 +2783,7 @@ class LibvirtConnTestCase(test.NoDBTestCase):
 
         self.assertIsInstance(cfg.clock,
                               vconfig.LibvirtConfigGuestClock)
-        self.assertEqual(cfg.clock.offset, "localtime")
+        self.assertEqual(cfg.clock.offset, "utc")
 
         self.assertEqual(3, len(cfg.features))
         self.assertIsInstance(cfg.features[0],
