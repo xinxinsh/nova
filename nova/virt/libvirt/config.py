@@ -1452,19 +1452,27 @@ class LibvirtConfigGuestController(LibvirtConfigGuestDevice):
         super(LibvirtConfigGuestController,
               self).__init__(root_name="controller", **kwargs)
 
-        self.type = None
-        self.index = None
-        self.model = None
+        self.source_type = "usb"
+        self.source_index = "0"
+        self.source_model = None
+        self.master_startport = None
 
     def format_dom(self):
         controller = super(LibvirtConfigGuestController, self).format_dom()
-        controller.set("type", self.type)
 
-        if self.index is not None:
-            controller.set("index", str(self.index))
+        controller.set("type", self.source_type)
+        controller.set("index", self.source_index)
+        if self.source_model:
+            controller.set("model", self.source_model)
 
-        if self.model:
-            controller.set("model", str(self.model))
+        alias = etree.Element("alias")
+        alias.set("name", "usb")
+        controller.append(alias)
+
+        if self.master_startport:
+            master = etree.Element("master")
+            master.set("startport", self.master_startport)
+            controller.append(master)
 
         return controller
 
