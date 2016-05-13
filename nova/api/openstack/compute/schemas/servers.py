@@ -123,8 +123,10 @@ base_resize = {
             'type': 'object',
             'properties': {
                 'flavorRef': parameter_types.flavor_ref,
+                'force_host': parameter_types.force_host,
             },
             'required': ['flavorRef'],
+            'required': ['force_host'],
             'additionalProperties': False,
         },
     },

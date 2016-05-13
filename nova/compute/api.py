@@ -2685,6 +2685,12 @@ class API(base.Base):
                                        current_instance_type,
                                        new_instance_type)
 
+        if 'force_host' in extra_instance_updates:
+            if extra_instance_updates.get(u'force_host') is not None:
+                tmp_list = []
+                tmp_list.append(extra_instance_updates.get(u'force_host'))
+                filter_properties[u'force_hosts'] = tmp_list
+
         if not flavor_id:
             self._record_action_start(context, instance,
                                       instance_actions.MIGRATE)

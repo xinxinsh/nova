@@ -990,6 +990,10 @@ class ServersController(wsgi.Controller):
             self.resize_extension_manager.map(self._resize_extension_point,
                                               resize_dict, resize_kwargs)
 
+        if 'force_host' in body['resize']:
+            if body['resize']['force_host'] is not None:
+                resize_kwargs['force_host'] = body['resize']['force_host']
+
         self._resize(req, id, flavor_ref, **resize_kwargs)
 
     @wsgi.response(202)
