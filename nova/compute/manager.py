@@ -3871,6 +3871,11 @@ class ComputeManager(manager.Manager):
         quotas = objects.Quotas.from_reservations(context,
                                                   reservations,
                                                   instance=instance)
+
+        instance.config_drive = ''
+        instance.save()
+        self.driver.ensure_detach_disk_config(instance)
+
         with self._error_out_instance_on_exception(context, instance,
                                                    quotas=quotas):
             # TODO(chaochin) Remove this until v5 RPC API
@@ -5264,6 +5269,10 @@ class ComputeManager(manager.Manager):
             migrate_data = \
                 migrate_data_obj.LiveMigrateData.detect_implementation(
                     migrate_data)
+
+        instance.config_drive = ''
+        instance.save()
+        self.driver.ensure_detach_disk_config(instance)
 
         try:
             if ('block_migration' in migrate_data and

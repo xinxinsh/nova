@@ -1622,7 +1622,7 @@ class ComputeDriver(object):
         raise NotImplementedError()
 
     def ensure_detach_disk_config(self, instance):
-        raise NotImplementedError()
+        pass
 
 
 def load_compute_driver(virtapi, compute_driver=None):
