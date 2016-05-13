@@ -1209,6 +1209,36 @@ class ServersController(wsgi.Controller):
         except exception.TriggerCrashDumpNotSupported as e:
             raise webob.exc.HTTPBadRequest(explanation=e.format_message())
 
+    @wsgi.response(202)
+    @wsgi.action('quiesce')
+    def _quiesce(self, req, id, body):
+        """Permit admins to quiesce the instance."""
+        context = req.environ["nova.context"]
+
+        instance = common.get_instance(self.compute_api, context, id)
+
+        try:
+            self.compute_api.quiesce(context, instance)
+        except exception.NovaException as e:
+            raise exc.HTTPBadRequest(explanation=e.format_message())
+
+        return webob.Response(status_int=202)
+
+    @wsgi.response(202)
+    @wsgi.action('unquiesce')
+    def _unquiesce(self, req, id, body):
+        """Permit admins to unquiesce the instance."""
+        context = req.environ["nova.context"]
+
+        instance = common.get_instance(self.compute_api, context, id)
+
+        try:
+            self.compute_api.unquiesce(context, instance)
+        except exception.NovaException as e:
+            raise exc.HTTPBadRequest(explanation=e.format_message())
+
+        return webob.Response(status_int=202)
+
 
 def remove_invalid_options(context, search_options, allowed_search_options):
     """Remove search options that are not valid for non-admin API/context."""

@@ -118,3 +118,9 @@ ALLOW_REBOOT = [None, REBOOTING, REBOOT_PENDING, REBOOT_STARTED, RESUMING,
 
 # possible task states during rollback_to_memory_snapshot()
 ROLLING_MEMORY_BACK = 'rolling_memory_back'
+
+# fsfreezing during quiesce()
+FSFREEZING = 'fsfreezing'
+
+# thawzing during unquiesce()
+FSTHAWING = 'thawing'

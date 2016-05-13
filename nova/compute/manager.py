@@ -6832,9 +6832,54 @@ class ComputeManager(manager.Manager):
     @wrap_exception()
     def quiesce_instance(self, context, instance):
         """Quiesce an instance on this host."""
-        context = context.elevated()
-        image_meta = objects.ImageMeta.from_instance(instance)
-        self.driver.quiesce(context, instance, image_meta)
+
+        @utils.synchronized(instance.uuid)
+        def _do_quiesce_instance(context, instance):
+            if instance.vm_state == vm_states.STOPPED:
+                return
+
+            if instance.vm_state != vm_states.ACTIVE:
+                msg = "instance to quiesce must be ACTIVE"
+                raise exception.NovaException(msg)
+
+            instance.task_state = task_states.FSFREEZING
+            instance.save()
+
+            context = context.elevated()
+            image_service = glance.get_default_image_service()
+            image_meta = image_service.show(context, instance.image_ref)
+
+            try:
+                self.driver.quiesce(context, instance, image_meta)
+                instance.vm_state = vm_states.FROZEN
+                instance.task_state = None
+                instance.save()
+            except (exception.InstanceQuiesceNotSupported,
+                    NotImplementedError) as err:
+                if strutils.bool_from_string(image_meta['properties'].get(
+                        'os_require_quiesce')):
+                    self._set_instance_error_state(context, instance)
+                    raise
+                else:
+                    instance.task_state = None
+                    instance.save()
+                    LOG.info(_LI('Skipping quiescing instance: '
+                                 '%(reason)s.'), {'reason': err},
+                             context=context, instance=instance)
+            except Exception:
+                with excutils.save_and_reraise_exception():
+                    self._set_instance_error_state(context, instance)
+                    try:
+                        image_service = glance.get_default_image_service()
+                        image_meta = image_service.show(context,
+                                                        instance.image_ref)
+                        self.driver.unquiesce(context, instance, image_meta)
+                        instance.vm_state = vm_states.ACTIVE
+                        instance.save()
+                    except Exception:
+                        self._set_instance_error_state(context, instance)
+
+        _do_quiesce_instance(context, instance)
 
     def _wait_for_snapshots_completion(self, context, mapping):
         for mapping_dict in mapping:
@@ -6860,16 +6905,41 @@ class ComputeManager(manager.Manager):
         If snapshots' image mapping is provided, it waits until snapshots are
         completed before unqueiscing.
         """
-        context = context.elevated()
-        if mapping:
+
+        @utils.synchronized(instance.uuid)
+        def _do_unquiesce_instance(context, instance, mapping):
+            if instance.vm_state == vm_states.STOPPED:
+                return
+
+            instance.task_state = task_states.FSTHAWING
+            instance.save()
+
+            if (instance.vm_state != vm_states.ACTIVE and
+               instance.vm_state != vm_states.FROZEN):
+                msg = "instance to unqiuesce must be ACTIVE or FROZEN"
+                raise Exception(msg)
+
+            context = context.elevated()
+            if mapping:
+                try:
+                    self._wait_for_snapshots_completion(context, mapping)
+                except Exception as error:
+                    LOG.exception(_LE("Exception while waiting completion of "
+                                      "volume snapshots: %s"),
+                                  error, instance=instance)
+
             try:
-                self._wait_for_snapshots_completion(context, mapping)
-            except Exception as error:
-                LOG.exception(_LE("Exception while waiting completion of "
-                                  "volume snapshots: %s"),
-                              error, instance=instance)
-        image_meta = objects.ImageMeta.from_instance(instance)
-        self.driver.unquiesce(context, instance, image_meta)
+                image_service = glance.get_default_image_service()
+                image_meta = image_service.show(context, instance.image_ref)
+                self.driver.unquiesce(context, instance, image_meta)
+                instance.vm_state = vm_states.ACTIVE
+                instance.task_state = None
+                instance.save()
+            except Exception:
+                with excutils.save_and_reraise_exception():
+                    self._set_instance_error_state(context, instance)
+
+        _do_unquiesce_instance(context, instance, mapping)
 
     @wrap_exception()
     def get_usb_host_list(self, context):

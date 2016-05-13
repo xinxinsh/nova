@@ -124,6 +124,9 @@ _STATE_MAP = {
     vm_states.SHELVED_OFFLOADED: {
         'default': 'SHELVED_OFFLOADED',
     },
+    vm_states.FROZEN: {
+        'default': 'FROZEN',
+    },
 }
 
 

@@ -1851,24 +1851,36 @@ class LibvirtDriver(driver.ComputeDriver):
             raise exception.InstanceQuiesceNotSupported(
                 instance_id=instance.uuid)
 
-        if not image_meta.properties.get('hw_qemu_guest_agent', False):
-            raise exception.QemuGuestAgentNotEnabled()
+        if 'hw_qemu_guest_agent' in image_meta['properties']:
+            hw_qga = image_meta.properties.get('hw_qemu_guest_agent', 'yes')
+            if hw_qga.lower() == 'no':
+                return False
+
+        return True
 
     def _set_quiesced(self, context, instance, image_meta, quiesced):
-        self._can_quiesce(instance, image_meta)
-        try:
-            guest = self._host.get_guest(instance)
-            if quiesced:
-                guest.freeze_filesystems()
-            else:
-                guest.thaw_filesystems()
-        except libvirt.libvirtError as ex:
-            error_code = ex.get_error_code()
-            msg = (_('Error from libvirt while quiescing %(instance_name)s: '
-                     '[Error Code %(error_code)s] %(ex)s')
-                   % {'instance_name': instance.name,
-                      'error_code': error_code, 'ex': ex})
-            raise exception.NovaException(msg)
+        supported = self._can_quiesce(instance, image_meta)
+        if not supported:
+            raise exception.InstanceQuiesceNotSupported(
+                instance_id=instance['uuid'],
+                reason='QEMU guest agent is not enabled')
+
+        if quiesced:
+            message = {
+                "execute": "guest-fsfreeze-freeze",
+                "arguments": {}
+            }
+            ret = self.call_qga_proxy(instance, message, 180)
+            if ret['msg'] != 'Sucess':
+                raise Exception(ret['msg'])
+        else:
+            message = {
+                "execute": "guest-fsfreeze-thaw",
+                "arguments": {}
+            }
+            ret = self.call_qga_proxy(instance, message)
+            if ret['msg'] != 'Sucess':
+                raise Exception(ret['msg'])
 
     def quiesce(self, context, instance, image_meta):
         """Freeze the guest filesystems to prepare for snapshot.
