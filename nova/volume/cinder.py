@@ -224,6 +224,29 @@ def _untranslate_snapshot_summary_view(context, snapshot):
     return d
 
 
+def _untranslate_backup_summary_view(context, backup):
+    """Maps keys for snapshots summary view."""
+    d = {}
+
+    d['id'] = backup.id
+    d['status'] = backup.status
+    d['size'] = backup.size
+    d['created_at'] = backup.created_at
+
+    # NOTE(dzyu) volume(cinder) v2 API uses 'name' instead of 'display_name',
+    # 'description' instead of 'display_description' for snapshot.
+    if hasattr(backup, 'display_name'):
+        d['display_name'] = backup.display_name
+        d['display_description'] = backup.display_description
+    else:
+        d['display_name'] = backup.name
+        d['display_description'] = backup.description
+
+    d['volume_id'] = backup.volume_id
+
+    return d
+
+
 def translate_cinder_exception(method):
     """Transforms a cinder exception but keeps its traceback intact."""
     @functools.wraps(method)
@@ -494,8 +517,10 @@ class API(object):
         return _untranslate_snapshot_summary_view(context, item)
 
     @translate_cinder_exception
-    def get_all_snapshots(self, context):
-        items = cinderclient(context).volume_snapshots.list(detailed=True)
+    def get_all_snapshots(self, context, search_opts=None):
+        items = cinderclient(context).volume_snapshots.list(
+            detailed=True,
+            search_opts=search_opts)
         rvals = []
 
         for item in items:
@@ -543,3 +568,28 @@ class API(object):
             {'status': status,
              'progress': '90%'}
         )
+
+    def get_all_backups(self, context, search_opts=None):
+        items = cinderclient(context).backups.list(
+            detailed=True,
+            search_opts=search_opts)
+        rvals = []
+
+        for item in items:
+            rvals.append(_untranslate_backup_summary_view(context, item))
+
+        return rvals
+
+    @translate_volume_exception
+    def get_volume_size(self, context, volume_id):
+        vs = cinderclient(context).volumes
+        return vs.get_volume_size(volume_id)
+
+    @translate_snapshot_exception
+    def get_snapshot_size(self, context, snapshot_id):
+        vs = cinderclient(context).volume_snapshots
+        return vs.get_snapshot_size(snapshot_id)
+
+    def get_backup_size(self, context, backup_id):
+        vs = cinderclient(context).backups
+        return vs.get_backup_size(backup_id)
