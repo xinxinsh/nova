@@ -377,6 +377,8 @@ libvirt_volume_drivers = [
     'aoe=nova.virt.libvirt.volume.aoe.LibvirtAOEVolumeDriver',
     'glusterfs='
         'nova.virt.libvirt.volume.glusterfs.LibvirtGlusterfsVolumeDriver',
+    'leofs='
+        'nova.virt.libvirt.volume.leofs.LibvirtLeofsVolumeDriver',
     'fibre_channel='
         'nova.virt.libvirt.volume.fibrechannel.'
         'LibvirtFibreChannelVolumeDriver',
