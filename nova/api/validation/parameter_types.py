@@ -303,6 +303,10 @@ flavor_ref = {
 }
 
 
+force_host = {
+    'type': ['string', 'integer', 'null'], 'minLength': 1
+}
+
 metadata = {
     'type': 'object',
     'patternProperties': {
