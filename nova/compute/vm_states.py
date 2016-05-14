@@ -56,3 +56,6 @@ ALLOW_TRIGGER_CRASH_DUMP = [ACTIVE, PAUSED, RESCUED, RESIZED, ERROR]
 
 ALLOW_RESOURCE_REMOVAL = [DELETED, SHELVED_OFFLOADED]
 # states we allow resources to be freed in
+
+# Quiesce instance
+FROZEN = 'frozen'

@@ -3818,6 +3818,27 @@ class API(base.Base):
                                                         instance,
                                                         image_meta)
 
+    @wrap_check_policy
+    @check_instance_lock
+    @check_instance_cell
+    @check_instance_state(vm_state=[vm_states.ACTIVE, vm_states.STOPPED])
+    def quiesce(self, context, instance):
+        """quiesce the given instance."""
+        self._record_action_start(context, instance,
+                                  instance_actions.QUIESCE)
+        self.compute_rpcapi.quiesce_instance(context, instance)
+
+    @wrap_check_policy
+    @check_instance_lock
+    @check_instance_cell
+    @check_instance_state(vm_state=[vm_states.ACTIVE, vm_states.STOPPED,
+                          vm_states.FROZEN])
+    def unquiesce(self, context, instance):
+        """unquiesce the given instance."""
+        self._record_action_start(context, instance,
+                                  instance_actions.UNQUIESCE)
+        self.compute_rpcapi.unquiesce_instance(context, instance)
+
 
 class HostAPI(base.Base):
     """Sub-set of the Compute Manager API for managing host operations."""
