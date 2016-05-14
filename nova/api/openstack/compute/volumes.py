@@ -46,6 +46,18 @@ def _translate_volume_detail_view(context, vol):
     return d
 
 
+def _translate_disk_size_view(context, vol, disk_size=None):
+    """Maps keys for volume/snapshot/backup size view."""
+    d = {}
+
+    d['id'] = vol['id']
+    d['status'] = vol['status']
+    d['displayName'] = vol['display_name']
+    d['displayDescription'] = vol['display_description']
+    d['diskSize'] = disk_size
+    return d
+
+
 def _translate_volume_summary_view(context, vol):
     """Maps keys for volumes summary view."""
     d = {}
@@ -197,6 +209,65 @@ class VolumeController(wsgi.Controller):
         location = '%s/%s' % (req.url, new_volume['id'])
 
         return wsgi.ResponseObject(result, headers=dict(location=location))
+
+    def get_disk_size_list(self, req):
+        """Returns the actual size of the volume and it's snapshots/backups"""
+        context = req.environ['nova.context']
+        authorize(context)
+
+        filter = {}
+        volume_id = req.GET.get('volume_id')
+        if not volume_id:
+            msg = _("'volume_id' must be specified")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+        filter['volume_id'] = volume_id
+
+        disk_size_list = {}
+        volume_exist = 0
+
+        # cinder volume
+        try:
+            volume = self.volume_api.get(context, volume_id)
+            volume_exist = 1
+        except Exception:
+            pass
+        else:
+            volume_size = self.volume_api.get_volume_size(context,
+                                                          volume['id'])
+            disk_size_list['volume'] = _translate_disk_size_view(
+                context,
+                volume,
+                volume_size[1])
+
+            # snapshots
+            disk_size_list['snapshot_list'] = []
+            snapshots = self.volume_api.get_all_snapshots(context, filter)
+            for snapshot in snapshots:
+                snapshot_size = self.volume_api.get_snapshot_size(
+                    context,
+                    snapshot['id'])
+                disk_size_list['snapshot_list'].append(
+                    _translate_disk_size_view(context,
+                                              snapshot,
+                                              snapshot_size[1]))
+
+            # backups
+            disk_size_list['backup_list'] = []
+            backups = self.volume_api.get_all_backups(context, filter)
+            for backup in backups:
+                backup_size = self.volume_api.get_backup_size(
+                    context,
+                    backup['id'])
+                disk_size_list['backup_list'].append(
+                    _translate_disk_size_view(context,
+                                              backup,
+                                              backup_size[1]))
+
+        if volume_exist == 0:
+            msg = _("volume %s could not be found") % volume_id
+            raise exc.HTTPNotFound(explanation=msg)
+
+        return {'disk_size_list': disk_size_list}
 
 
 def _translate_attachment_detail_view(volume_id, instance_uuid, mountpoint):
@@ -586,7 +657,9 @@ class Volumes(extensions.V21APIExtensionBase):
         resources = []
 
         res = extensions.ResourceExtension(
-            ALIAS, VolumeController(), collection_actions={'detail': 'GET'})
+            ALIAS, VolumeController(), collection_actions={
+                'detail': 'GET',
+                'get_disk_size_list': 'GET'})
         resources.append(res)
 
         res = extensions.ResourceExtension('os-volumes_boot',
