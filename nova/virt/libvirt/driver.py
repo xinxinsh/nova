@@ -2145,6 +2145,21 @@ class LibvirtDriver(driver.ComputeDriver):
                 self._volume_snapshot_update_status(
                     context, snapshot_id, 'error')
 
+        if (create_info.get('ext_snapshot', False) and
+            create_info.get('file_to_merge', None) is not None):
+            try:
+                self._volume_snapshot_delete(context, instance,
+                                             volume_id, snapshot_id,
+                                             delete_info=create_info)
+            except Exception:
+                with excutils.save_and_reraise_exception():
+                    LOG.exception(_LE('Error occurred during '
+                                      'volume_snapshot_create, '
+                                      'sending error status to Cinder.'),
+                                  instance=instance)
+                    self._volume_snapshot_update_status(
+                        context, snapshot_id, 'error')
+
         self._volume_snapshot_update_status(
             context, snapshot_id, 'creating')
 
