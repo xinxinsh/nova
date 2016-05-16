@@ -646,6 +646,39 @@ class SnapshotController(wsgi.Controller):
         return {'snapshot': retval}
 
 
+class QoSReloadController(wsgi.Controller):
+    """The volume QoS reload API controller for the OpenStack API.
+
+    A child resource of the server.
+    """
+
+    def __init__(self):
+        self.compute_api = compute.API(skip_policy_check=True)
+        super(QoSReloadController, self).__init__()
+
+    @wsgi.response(202)
+    def create(self, req, server_id, body):
+        """Reload a volume's qos specs."""
+        context = req.environ['nova.context']
+        authorize(context)
+
+        if not self.is_valid_body(body, 'reloadQosSpecs'):
+            msg = _("reloadQosSpecs not specified.")
+            raise exc.HTTPBadRequest(explanation=msg)
+
+        try:
+            volume_id = body['reloadQosSpecs']['volumeId']
+        except KeyError:
+            raise exc.HTTPBadRequest(explanation=msg)
+
+        instance = common.get_instance(self.compute_api, context, server_id)
+
+        try:
+            self.compute_api.reload_qos_specs(context, instance, volume_id)
+        except Exception:
+            raise
+
+
 class Volumes(extensions.V21APIExtensionBase):
     """Volumes support."""
 

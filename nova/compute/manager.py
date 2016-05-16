@@ -4896,6 +4896,42 @@ class ComputeManager(manager.Manager):
         self._detach_volume(context, volume_id, instance,
                             attachment_id=attachment_id)
 
+    @wrap_exception()
+    def reload_qos_specs(self, context, instance, volume_id):
+        try:
+            vm_info = self.driver.get_info(instance)
+        except exception.InstanceNotFound:
+            LOG.debug('Instance is not found.', instance=instance)
+            return
+
+        bdm = objects.BlockDeviceMapping.get_by_volume_and_instance(
+            context, volume_id, instance.uuid)
+
+        connection_info = self.volume_api.initialize_connection(
+            context, volume_id, None)
+
+        try:
+            qos = connection_info['data']['qos_specs']
+        except Exception as e:
+            LOG.error(e)
+            return
+
+        qos_specs = driver_block_device.get_qos_spec(qos)
+
+        connection_info = jsonutils.loads(bdm.connection_info)
+        connection_info['data']['qos_specs'] = qos_specs
+        bdm.connection_info = jsonutils.dumps(connection_info)
+        bdm.save(context)
+
+        if vm_info['state'] == power_state.RUNNING:
+            dev = block_device.strip_dev(bdm['device_name'])
+            self.driver.set_qos_specs(instance, dev, qos_specs)
+
+        LOG.info(_LI("Set %(volume_id)s QoS to %(qos_specs)s."),
+                 {'volume_id': volume_id,
+                  'qos_specs': qos_specs},
+                 instance=instance)
+
     def _init_volume_connection(self, context, new_volume_id,
                                 old_volume_id, connector, instance, bdm):
 

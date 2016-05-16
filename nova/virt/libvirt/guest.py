@@ -477,6 +477,10 @@ class Guest(object):
         """
         self._domain.suspend()
 
+    def set_qos_specs(self, dev, qos_specs, flags):
+        """Set qos"""
+        self._domain.setBlockIoTune(dev, qos_specs, flags)
+
 
 class BlockDevice(object):
     """Wrapper around block device API"""

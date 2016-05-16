@@ -517,6 +517,13 @@ class ComputeAPI(object):
         cctxt.cast(ctxt, 'detach_volume',
                    instance=instance, volume_id=volume_id, **extra)
 
+    def reload_qos_specs(self, ctxt, instance, volume_id):
+        version = '4.0'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                version=version)
+        cctxt.call(ctxt, 'reload_qos_specs', instance=instance,
+                   volume_id=volume_id)
+
     def finish_resize(self, ctxt, instance, migration, image, disk_info,
             host, reservations=None):
         version = '4.0'

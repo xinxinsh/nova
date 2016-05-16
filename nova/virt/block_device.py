@@ -58,6 +58,21 @@ def update_db(method):
     return wrapped
 
 
+def get_qos_spec(specs):
+    specs = specs or {}
+    qos_specs = {}
+    tune_opts = ['total_bytes_sec', 'read_bytes_sec',
+                 'write_bytes_sec', 'total_iops_sec',
+                 'read_iops_sec', 'write_iops_sec']
+    for k in tune_opts:
+        if specs.get(k) is not None:
+            qos_specs[k] = int(specs.get(k))
+        else:
+            qos_specs[k] = 0
+
+    return qos_specs
+
+
 def _get_volume_create_az_value(instance):
     """Determine az to use when creating a volume
 

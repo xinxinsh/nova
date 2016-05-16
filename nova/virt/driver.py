@@ -293,6 +293,9 @@ class ComputeDriver(object):
         """
         raise NotImplementedError()
 
+    def set_qos_specs(self, instance, dev, qos_specs):
+        raise NotImplementedError()
+
     def destroy(self, context, instance, network_info, block_device_info=None,
                 destroy_disks=True, migrate_data=None):
         """Destroy the specified instance from the Hypervisor.

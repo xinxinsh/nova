@@ -934,6 +934,27 @@ class LibvirtDriver(driver.ComputeDriver):
     def unplug_vifs(self, instance, network_info):
         self._unplug_vifs(instance, network_info, False)
 
+    def set_qos_specs(self, instance, dev, qos_specs):
+        if not qos_specs:
+            qos_specs = {'total_bytes_sec': 0, 'total_iops_sec': 0}
+
+        try:
+            guest = self._host.get_guest(instance)
+        except exception.InstanceNotFound:
+            raise
+
+        try:
+            flags = libvirt.VIR_DOMAIN_AFFECT_CONFIG
+            state = LIBVIRT_POWER_STATE[guest.get_info()[0]]
+            guest.set_qos_specs(dev, qos_specs, flags)
+
+            if state in [power_state.RUNNING, power_state.PAUSED]:
+                flags = libvirt.VIR_DOMAIN_AFFECT_LIVE
+                guest.set_qos_specs(dev, qos_specs, flags)
+        except libvirt.libvirtError:
+            LOG.error(_LE('set qos failed.'), instance=instance)
+            raise
+
     def _teardown_container(self, instance):
         inst_path = libvirt_utils.get_instance_path(instance)
         container_dir = os.path.join(inst_path, 'rootfs')
