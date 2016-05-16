@@ -29,6 +29,7 @@ import base64
 import contextlib
 import functools
 import inspect
+import os
 import socket
 import sys
 import time
@@ -148,7 +149,10 @@ compute_opts = [
                     'Starting with Liberty, Cinder can use image volume '
                     'cache. This may help with block device allocation '
                     'performance. Look at the cinder '
-                    'image_volume_cache_enabled configuration option.')
+                    'image_volume_cache_enabled configuration option.'),
+    cfg.ListOpt('iso_path',
+               default='/mnt/iso',
+               help='List of ISO path')
     ]
 
 interval_opts = [
@@ -4154,6 +4158,29 @@ class ComputeManager(manager.Manager):
             context, instance, "set_fixed_ip.end", network_info=network_info)
 
     @wrap_exception()
+    def get_cdroms(self, context):
+        iso = []
+        for iso_path in CONF.iso_path:
+            for dirname, subdirs, files in os.walk(iso_path, followlinks=True):
+                for fname in files:
+                    path = os.path.join(dirname, fname)
+                    st = os.stat(path)
+                    iso.append({'name': path, 'size': st.st_size})
+        return iso
+
+    @object_compat
+    @wrap_exception()
+    @wrap_instance_fault
+    def list_mounted_cdrom(self, context, instance):
+        return self.driver.list_mounted_cdrom(instance)
+
+    @object_compat
+    @wrap_exception()
+    @wrap_instance_fault
+    def change_cdrom(self, context, instance, iso_name):
+        return self.driver.change_cdrom(instance, iso_name)
+
+    @wrap_exception()
     @reverts_task_state
     @wrap_instance_event
     @wrap_instance_fault
@@ -4757,6 +4784,8 @@ class ComputeManager(manager.Manager):
             new_bdm.device_name = self._get_device_name_for_instance(
                     instance, bdms, new_bdm)
 
+            if new_bdm.device_name[-1] == 'a':
+                new_bdm.boot_index = 0
             # NOTE(vish): create bdm here to avoid race condition
             new_bdm.create()
             return new_bdm

@@ -527,6 +527,12 @@ class ComputeDriver(object):
         """
         raise NotImplementedError()
 
+    def list_mounted_cdrom(self, instance):
+        raise NotImplementedError()
+
+    def change_cdrom(self, instance, iso_name):
+        raise NotImplementedError()
+
     def migrate_disk_and_power_off(self, context, instance, dest,
                                    flavor, network_info,
                                    block_device_info=None,

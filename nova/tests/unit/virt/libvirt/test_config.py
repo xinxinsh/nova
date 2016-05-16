@@ -1600,6 +1600,7 @@ class LibvirtConfigGuestTest(LibvirtConfigBaseTest):
               <os>
                 <type>exe</type>
                 <init>/sbin/init</init>
+                <boot dev="cdrom"/>
               </os>
               <devices>
                 <filesystem type="mount">
@@ -1645,6 +1646,7 @@ class LibvirtConfigGuestTest(LibvirtConfigBaseTest):
               <os>
                 <type>exe</type>
                 <init>/sbin/init</init>
+                <boot dev="cdrom"/>
               </os>
               <devices>
                 <filesystem type="mount">
@@ -1691,6 +1693,7 @@ class LibvirtConfigGuestTest(LibvirtConfigBaseTest):
                 <kernel>/tmp/vmlinuz</kernel>
                 <initrd>/tmp/ramdisk</initrd>
                 <cmdline>console=xvc0</cmdline>
+                <boot dev="cdrom"/>
               </os>
               <devices>
                 <disk type="file" device="disk">
@@ -1738,6 +1741,7 @@ class LibvirtConfigGuestTest(LibvirtConfigBaseTest):
                 <loader>/usr/lib/xen/boot/hvmloader</loader>
                 <cmdline>console=xvc0</cmdline>
                 <root>root=xvda</root>
+                <boot dev="cdrom"/>
               </os>
               <features>
                 <acpi/>
@@ -1865,6 +1869,7 @@ class LibvirtConfigGuestTest(LibvirtConfigBaseTest):
               </sysinfo>
               <os>
                 <type>linux</type>
+                <boot dev="cdrom"/>
                 <boot dev="hd"/>
                 <boot dev="cdrom"/>
                 <boot dev="fd"/>
@@ -1910,6 +1915,7 @@ class LibvirtConfigGuestTest(LibvirtConfigBaseTest):
                 <type>x86_64</type>
                 <loader readonly='yes' type='pflash'>/tmp/OVMF.fd</loader>
                 <nvram template="/tmp/OVMF.fd"></nvram>
+                <boot dev="cdrom"/>
               </os>
             </domain>""")
 
@@ -1932,6 +1938,7 @@ class LibvirtConfigGuestTest(LibvirtConfigBaseTest):
               <vcpu>2</vcpu>
               <os>
                 <type>fake</type>
+                <boot dev="cdrom"/>
                 <bootmenu enable="yes"/>
               </os>
             </domain>""")
@@ -1955,6 +1962,7 @@ class LibvirtConfigGuestTest(LibvirtConfigBaseTest):
               <vcpu>2</vcpu>
               <os>
                 <type machine="fake_machine_type">hvm</type>
+                <boot dev="cdrom"/>
               </os>
             </domain>""")
 

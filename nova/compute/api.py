@@ -3105,6 +3105,25 @@ class API(base.Base):
         """Reset networking on the instance."""
         self.compute_rpcapi.reset_network(context, instance=instance)
 
+    def get_cdroms(self, context, host):
+        return self.compute_rpcapi.get_cdroms(context, host=host)
+
+    @wrap_check_policy
+    @check_instance_lock
+    @check_instance_cell
+    def list_mounted_cdrom(self, context, instance):
+        """List mounted cdrom on the instance."""
+        return self.compute_rpcapi.list_mounted_cdrom(context,
+                                                instance=instance)
+
+    @wrap_check_policy
+    @check_instance_lock
+    @check_instance_cell
+    def change_cdrom(self, context, instance, iso_name):
+        """Change cdrom on the instance."""
+        self.compute_rpcapi.change_cdrom(context, instance=instance,
+                                        iso_name=iso_name)
+
     @wrap_check_policy
     @check_instance_lock
     @check_instance_cell

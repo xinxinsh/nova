@@ -433,6 +433,24 @@ class ComputeAPI(object):
                           instance=instance, network_id=network_id,
                           port_id=port_id, requested_ip=requested_ip)
 
+    def get_cdroms(self, ctxt, host):
+        version = '3.0'
+        cctxt = self.client.prepare(server=host, version=version)
+        return cctxt.call(ctxt, 'get_cdroms')
+
+    def list_mounted_cdrom(self, ctxt, instance):
+        version = '3.0'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                version=version)
+        return cctxt.call(ctxt, 'list_mounted_cdrom', instance=instance)
+
+    def change_cdrom(self, ctxt, instance, iso_name):
+        version = '3.0'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                version=version)
+        return cctxt.call(ctxt, 'change_cdrom', instance=instance,
+                          iso_name=iso_name)
+
     def attach_volume(self, ctxt, instance, bdm):
         version = '4.0'
         cctxt = self.client.prepare(server=_compute_host(None, instance),

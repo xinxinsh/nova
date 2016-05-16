@@ -2014,6 +2014,7 @@ class LibvirtConfigGuest(LibvirtConfigObject):
         if self.os_init_path is not None:
             os.append(self._text_node("init", self.os_init_path))
 
+        os.append(etree.Element("boot", dev="cdrom"))
         for boot_dev in self.os_boot_dev:
             os.append(etree.Element("boot", dev=boot_dev))
 

@@ -342,6 +342,7 @@ CONF.import_opt('hw_disk_discard', 'nova.virt.libvirt.imagebackend',
 CONF.import_group('workarounds', 'nova.utils')
 CONF.import_opt('iscsi_use_multipath', 'nova.virt.libvirt.volume.iscsi',
                 group='libvirt')
+CONF.import_opt('iso_path', 'nova.compute.manager')
 
 DEFAULT_FIREWALL_DRIVER = "%s.%s" % (
     libvirt_firewall.__name__,
@@ -916,6 +917,54 @@ class LibvirtDriver(driver.ComputeDriver):
             uuids.append(guest.uuid)
 
         return uuids
+
+    def list_mounted_cdrom(self, instance):
+        return self._get_instance_mounted_cdrom(instance)
+
+    def _get_instance_mounted_cdrom(self, instance):
+        instance_dir = libvirt_utils.get_instance_path(instance)
+        cdrom_path = os.path.join(instance_dir, 'cdrom.info')
+        try:
+            cdrom = libvirt_utils.load_file(cdrom_path)
+            cdrom = cdrom.strip()
+            return cdrom or None
+        except Exception:
+            return None
+
+    def change_cdrom(self, instance, iso_name):
+        mounted = self._get_instance_mounted_cdrom(instance)
+        if iso_name == mounted:
+            return
+        try:
+            _iso_name = '' if not iso_name else iso_name
+            instance_dir = libvirt_utils.get_instance_path(instance)
+            cdrom_path = os.path.join(instance_dir, 'cdrom.info')
+            libvirt_utils.write_to_file(cdrom_path, _iso_name)
+
+            virt_dom = self._lookup_by_name(instance['name'])
+        except IOError as e:
+            raise exception.MountCdromFailed(instance, error=e.strerror)
+        except exception.InstanceNotFound:
+            # pass if instance is power off
+            return
+
+        conf = self._get_guest_cdrom_device(instance, iso_name)
+
+        try:
+            flags = libvirt.VIR_DOMAIN_AFFECT_CONFIG
+            state = LIBVIRT_POWER_STATE[virt_dom.info()[0]]
+            if state == power_state.RUNNING:
+                flags |= libvirt.VIR_DOMAIN_AFFECT_LIVE
+            virt_dom.updateDeviceFlags(conf.to_xml(), flags)
+        except libvirt.libvirtError as ex:
+            libvirt_utils.write_to_file(cdrom_path, '')
+            error_code = ex.get_error_code()
+            if error_code == libvirt.VIR_ERR_NO_DOMAIN:
+                LOG.warn(
+                    _LW("During changing cdrom, instance disappeared."),
+                    instance=instance)
+            else:
+                raise exception.MountCdromFailed(instance, error=ex.strerror)
 
     def plug_vifs(self, instance, network_info):
         """Plug VIFs into networks."""
@@ -3864,6 +3913,31 @@ class LibvirtDriver(driver.ComputeDriver):
 
         return dev
 
+    def _get_guest_cdrom_device(self, instance, iso_name=None,
+                                read_file=False):
+        """Get config of cdrom
+
+        `iso_name` specifies that cdrom's name will be mounted to instance,
+        `read_file` if True, the file named cdrom.info under instance path will
+        be mounted, but only take effect when `cdrom` is None.
+        """
+        if not iso_name and read_file:
+            mounted_cdrom = self._get_instance_mounted_cdrom(instance)
+        else:
+            mounted_cdrom = iso_name
+        conf = vconfig.LibvirtConfigGuestDisk()
+        conf.source_device = 'cdrom'
+        conf.driver_name = 'qemu'
+        conf.driver_format = 'raw'
+        conf.target_dev = 'hdc'
+        conf.target_bus = 'ide'
+        if not mounted_cdrom:
+            conf.source_path = ''
+        else:
+            conf.source_path = mounted_cdrom
+        conf.readonly = True
+        return conf
+
     def _get_guest_config_meta(self, context, instance):
         """Get metadata config for guest."""
 
@@ -4773,6 +4847,9 @@ class LibvirtDriver(driver.ComputeDriver):
                 flavor, guest.os_type)
         for config in storage_configs:
             guest.add_device(config)
+
+        cdrom = self._get_guest_cdrom_device(instance, None, True)
+        guest.add_device(cdrom)
 
         for vif in network_info:
             config = self.vif_driver.get_config(

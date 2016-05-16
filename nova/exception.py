@@ -2148,3 +2148,8 @@ class MultiplePortsFound(Invalid):
 class SetFixedIpFail(Invalid):
     msg_fmt = _("Unable to update port %(port_id)s of instance "
                 "%(instance_id)s with failure: %(error)s.")
+
+
+class MountCdromFailed(NovaException):
+    msg_fmt = _("Unable to mount/unmount cdrom to instance %(instance)s,"
+                " error: %(error)s")
