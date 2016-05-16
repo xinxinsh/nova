@@ -72,6 +72,44 @@ class MultinicController(wsgi.Controller):
         except exception.FixedIpNotFoundForSpecificInstance as e:
             raise exc.HTTPBadRequest(explanation=e.format_message())
 
+    @wsgi.response(202)
+    @wsgi.action('setFixedIp')
+    @extensions.expected_errors((400, 404))
+    @validation.schema(multinic.set_fixed_ip)
+    def _set_fixed_ip(self, req, id, body):
+        """Set instance VIF ip addresses."""
+        context = req.environ['nova.context']
+        authorize(context)
+        fixed_ips = []
+        port_id = body['setFixedIp']['portId']
+        for item in body['setFixedIp']['fixedIps']:
+            fixed_ips.append(dict(
+                subnet_id=item['subnetId'],
+                ip_address=item['ipAddress']))
+
+        instance = self._get_instance(context, id, want_objects=True)
+
+        self.compute_api.set_fixed_ip(
+            context, instance, port_id, fixed_ips)
+
+    @wsgi.response(202)
+    @wsgi.action('addFixedIpV2')
+    @extensions.expected_errors((400, 404))
+    @validation.schema(multinic.add_fixed_ip_v2)
+    def _add_fixed_ip_v2(self, req, id, body):
+        """Adds an specified IP to an instance."""
+        context = req.environ['nova.context']
+        authorize(context)
+
+        instance = self._get_instance(context, id, want_objects=True)
+
+        port_id = body['addFixedIpV2']['portId']
+        subnet_id = body['addFixedIpV2']['subnetId']
+        ip_address = body['addFixedIpV2']['ipAddress']
+
+        self.compute_api.add_fixed_ip_v2(
+            context, instance, port_id, subnet_id, ip_address)
+
 
 # Note: The class name is as it has to be for this to be loaded as an
 # extension--only first character capitalized.

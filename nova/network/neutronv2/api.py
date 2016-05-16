@@ -1035,6 +1035,89 @@ class API(base_api.NetworkAPI):
         raise exception.FixedIpNotFoundForSpecificInstance(
                 instance_uuid=instance.uuid, ip=address)
 
+    @base_api.refresh_cache
+    def add_fixed_ip_to_instance_v2(self, context, instance, port_id,
+                                    subnet_id, ip_address, conductor_api=None):
+        """Add a fixed ip to the instance from specified network."""
+
+        neutron = get_client(context)
+        search_opts = {'id': subnet_id}
+        data = get_client(context).list_subnets(**search_opts)
+        ipam_subnets = data.get('subnets', [])
+
+        if not ipam_subnets:
+            raise exception.SubnetNotFoundForInstance(
+                instance_id=instance.uuid)
+
+        zone = 'compute:%s' % instance['availability_zone']
+        search_opts = {'device_id': instance['uuid'],
+                       'device_owner': zone,
+                       'id': port_id}
+
+        data = neutron.list_ports(**search_opts)
+        ports = data['ports']
+
+        if not ports:
+            raise exception.PortNotFoundForInstance(
+                instance_id=instance.uuid)
+
+        # NOTE(zcq): The `ip_address` may not be compatible with subnet,
+        #           we leave judgement to Neutron service.
+
+        for p in ports:
+            fixed_ips = [{'subnet_id': subnet_id,
+                          'ip_address': ip_address}]
+            fixed_ips.extend(p['fixed_ips'])
+            port_req_body = {'port': {'fixed_ips': fixed_ips}}
+            try:
+                neutron.update_port(p['id'],
+                                    port_req_body)
+                return self._get_instance_nw_info(context, instance)
+            except Exception as ex:
+                msg = _("Unable to update port %(portid)s on subnet "
+                        "%(subnet_id)s with failure: %(exception)s")
+                LOG.info(msg, {'portid': p['id'],
+                                'subnet_id': subnet_id,
+                                'exception': ex})
+
+        raise exception.AddFixedIpV2Failed()
+
+    @base_api.refresh_cache
+    def set_fixed_ip_for_instance(self, context, instance, port_id, fixed_ips,
+                                  conductor_api=None):
+        """Set instance VIF fixed ips."""
+
+        neutron = get_client(context)
+        zone = 'compute:%s' % instance['availability_zone']
+        search_opts = {'device_id': instance['uuid'],
+                       'device_owner': zone,
+                       'id': port_id}
+
+        data = neutron.list_ports(**search_opts)
+        ports = data['ports']
+
+        if not ports:
+            raise exception.PortNotFoundForInstance(
+                port_id=port_id,
+                instance_id=instance.uuid)
+
+        if len(ports) > 1:
+            raise exception.MultiplePortsFound(port_id=port_id)
+
+        port_req_body = {'port': {'fixed_ips': fixed_ips}}
+        try:
+            neutron.update_port(port_id, port_req_body)
+            return self._get_instance_nw_info(context, instance)
+        except Exception as ex:
+            msg = _("Unable to update port %(portid)s fixed ips "
+                    "%(fixed_ips)s with failure: %(exception)s")
+            LOG.info(msg, {'portid': port_id,
+                           'fixed_ips': fixed_ips,
+                           'exception': ex})
+            raise exception.SetFixedIpFail(port_id=port_id,
+                                           instance_id=instance.uuid,
+                                           error=ex.strerror)
+
     def _get_port_vnic_info(self, context, neutron, port_id):
         """Retrieve port vnic info
 

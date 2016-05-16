@@ -4099,6 +4099,55 @@ class ComputeManager(manager.Manager):
         self._notify_about_instance_usage(
             context, instance, "delete_ip.end", network_info=network_info)
 
+    @object_compat
+    @wrap_exception()
+    @wrap_instance_fault
+    def add_fixed_ip_to_instance_v2(self, context, instance,
+                                    port_id, subnet_id, ip_address):
+        """Calls network_api to add new fixed_ip to instance
+        then injects the new network info and resets instance networking.
+        """
+        self._notify_about_instance_usage(
+                context, instance, "add_fixed_ip_v2.start")
+
+        network_info = self.network_api.add_fixed_ip_to_instance_v2(
+            context, instance, port_id, subnet_id, ip_address,
+            conductor_api=self.conductor_api)
+
+        self._inject_network_info(context, instance, network_info)
+        self.reset_network(context, instance)
+
+        # NOTE(russellb) We just want to bump updated_at.  See bug 1143466.
+        instance.updated_at = timeutils.utcnow()
+        instance.save()
+
+        self._notify_about_instance_usage(
+            context, instance, "add_fixed_ip_v2.end",
+            network_info=network_info)
+
+    @wrap_exception()
+    @reverts_task_state
+    @wrap_instance_fault
+    def set_fixed_ip_for_instance(self, context, instance, port_id, fixed_ips):
+        """Call network_api to set fixed_ip for instance."""
+
+        self._notify_about_instance_usage(
+            context, instance, "set_fixed_ip.start")
+
+        network_info = self.network_api.set_fixed_ip_for_instance(
+            context, instance, port_id, fixed_ips,
+            conductor_api=self.conductor_api)
+
+        self._inject_network_info(context, instance, network_info)
+        self.reset_network(context, instance)
+
+        # NOTE(russellb) We just want to bump updated_at.  See bug 1143466.
+        instance.updated_at = timeutils.utcnow()
+        instance.save()
+
+        self._notify_about_instance_usage(
+            context, instance, "set_fixed_ip.end", network_info=network_info)
+
     @wrap_exception()
     @reverts_task_state
     @wrap_instance_event

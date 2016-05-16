@@ -50,3 +50,51 @@ remove_fixed_ip = {
     'required': ['removeFixedIp'],
     'additionalProperties': False,
 }
+
+
+set_fixed_ip = {
+    'type': 'object',
+    'properties': {
+        'setFixedIp': {
+            'type': 'object',
+            'properties': {
+                'portId': parameter_types.network_port_id,
+                'fixedIps': {
+                    'type': 'array', 'minItems': 1, 'maxItems': 4,
+                    'items': {
+                        'type': 'object',
+                        'properties': {
+                            'subnetId': parameter_types.network_id,
+                            'ipAddress': parameter_types.ip_address,
+                        },
+                        'required': ['subnetId', 'ipAddress'],
+                        'additionalProperties': False,
+                    }
+                }
+            },
+            'required': ['portId', 'fixedIps'],
+            'additionalProperties': False,
+        },
+    },
+    'required': ['setFixedIp'],
+    'additionalProperties': False,
+}
+
+
+add_fixed_ip_v2 = {
+    'type': 'object',
+    'properties': {
+        'addFixedIpV2': {
+            'type': 'object',
+            'properties': {
+                'portId': parameter_types.network_port_id,
+                'subnetId': parameter_types.network_id,
+                'ipAddress': parameter_types.ip_address,
+            },
+            'required': ['portId', 'subnetId', 'ipAddress'],
+            'additionalProperties': False,
+        },
+    },
+    'required': ['addFixedIpV2'],
+    'additionalProperties': False,
+}

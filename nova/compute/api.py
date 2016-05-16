@@ -2773,6 +2773,23 @@ class API(base.Base):
 
     @wrap_check_policy
     @check_instance_lock
+    def add_fixed_ip_v2(self, context, instance,
+                        port_id, subnet_id, ip_address):
+        """Add a specified fixed_ip to given instance."""
+        self.compute_rpcapi.add_fixed_ip_to_instance_v2(
+            context, instance=instance,
+            port_id=port_id, subnet_id=subnet_id, ip_address=ip_address)
+
+    @wrap_check_policy
+    @check_instance_lock
+    def set_fixed_ip(self, context, instance, port_id, fixed_ips):
+        """Set instance VIF ip addresses."""
+        self.compute_rpcapi.set_fixed_ip_for_instance(
+            context, instance=instance, port_id=port_id,
+            fixed_ips=fixed_ips)
+
+    @wrap_check_policy
+    @check_instance_lock
     @check_instance_cell
     @check_instance_state(vm_state=[vm_states.ACTIVE])
     def pause(self, context, instance):

@@ -2125,3 +2125,26 @@ class BuildRequestNotFound(NotFound):
 class QgaExecuteFailure(NovaException):
     msg_fmt = _("Qga execute fail for instance %(instance)s, method: "
                 "%(method)s, error: %(error)s")
+
+
+class SubnetNotFound(NotFound):
+    msg_fmt = _("Subnet %(subnet_id)s could not be found.")
+
+
+class PortNotFoundForInstance(PortNotFound):
+    msg_fmt = _("Port %(port_id)s could not be found for instance "
+                "%(instance_id)s.")
+
+
+class AddFixedIpV2Failed(NovaException):
+    msg_fmt = _("Unable to add fixed ip to instance")
+
+
+class MultiplePortsFound(Invalid):
+    msg_fmt = _("Multiple Ports object were be found"
+                " by one port id %(port_id)s.")
+
+
+class SetFixedIpFail(Invalid):
+    msg_fmt = _("Unable to update port %(port_id)s of instance "
+                "%(instance_id)s with failure: %(error)s.")
