@@ -412,6 +412,18 @@ class ComputeAPI(object):
         cctxt.cast(ctxt, 'add_fixed_ip_to_instance',
                    instance=instance, network_id=network_id)
 
+    def add_fixed_ip_to_instance_v2(self, ctxt, instance,
+                                    port_id, subnet_id, ip_address):
+        cctxt = self.client.prepare(server=_compute_host(None, instance))
+        cctxt.cast(ctxt, 'add_fixed_ip_to_instance_v2',
+                   instance=instance, port_id=port_id,
+                   subnet_id=subnet_id, ip_address=ip_address)
+
+    def set_fixed_ip_for_instance(self, ctxt, instance, port_id, fixed_ips):
+        cctxt = self.client.prepare(server=_compute_host(None, instance))
+        cctxt.call(ctxt, 'set_fixed_ip_for_instance', instance=instance,
+                   port_id=port_id, fixed_ips=fixed_ips)
+
     def attach_interface(self, ctxt, instance, network_id, port_id,
                          requested_ip):
         version = '4.0'
