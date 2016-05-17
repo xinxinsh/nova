@@ -22,10 +22,10 @@ class LibvirtLeofsVolumeDriver(libvirt_volume.LibvirtBaseVolumeDriver):
         super(LibvirtLeofsVolumeDriver,
               self).__init__(connection, is_block_dev=False)
 
-    def connect_volume(self, connection_info, mount_device):
+    def get_config(self, connection_info, mount_device):
         """Connect the volume. Returns xml for libvirt."""
         conf = super(LibvirtLeofsVolumeDriver,
-                     self).connect_volume(connection_info, mount_device)
+                     self).get_config(connection_info, mount_device)
 
         data = connection_info['data']
 
