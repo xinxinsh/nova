@@ -635,26 +635,6 @@ def fixed_ip_update(context, address, values):
 ####################
 
 
-def bandwidth_get_by_port_id(context, port_id):
-    """Find bandwidth associating with port
-    Raises if bandwidth does not exist.
-    """
-    return IMPL.bandwidth_get_by_port_id(context, port_id)
-
-
-def bandwidth_create(context, values):
-    """Create new bandwidth for port"""
-    return IMPL.bandwidth_create(context, values)
-
-
-def bandwidth_update(context, port_id, values):
-    """Update bandwidth for port"""
-    return IMPL.bandwidth_update(context, port_id, values)
-
-
-####################
-
-
 def virtual_interface_create(context, values):
     """Create a virtual interface record in the database."""
     return IMPL.virtual_interface_create(context, values)

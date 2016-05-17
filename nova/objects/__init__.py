@@ -27,7 +27,6 @@ def register_all():
     __import__('nova.objects.agent')
     __import__('nova.objects.aggregate')
     __import__('nova.objects.bandwidth_usage')
-    __import__('nova.objects.bandwidth')
     __import__('nova.objects.block_device')
     __import__('nova.objects.build_request')
     __import__('nova.objects.cell_mapping')

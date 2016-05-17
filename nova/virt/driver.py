@@ -1644,11 +1644,6 @@ class ComputeDriver(object):
                                     image_meta, memory_file):
         raise NotImplementedError()
 
-    def set_interface_bandwidth(self, instance, vif,
-                                inbound_kilo_bytes, outbound_kilo_bytes):
-        """Set network interface bandwidth."""
-        raise NotImplementedError()
-
 
 def load_compute_driver(virtapi, compute_driver=None):
     """Load a compute driver module.
