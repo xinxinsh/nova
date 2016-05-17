@@ -35,7 +35,24 @@ from nova import utils
 class X509Test(test.NoDBTestCase):
     @mock.patch('nova.db.certificate_create')
     def test_can_generate_x509(self, mock_create):
-        pass
+        with utils.tempdir() as tmpdir:
+            self.flags(ca_path=tmpdir)
+            crypto.ensure_ca_filesystem()
+            _key, cert_str = crypto.generate_x509_cert('fake', 'fake')
+
+            project_cert = crypto.fetch_ca(project_id='fake')
+
+            signed_cert_file = os.path.join(tmpdir, "signed")
+            with open(signed_cert_file, 'w') as keyfile:
+                keyfile.write(cert_str)
+
+            project_cert_file = os.path.join(tmpdir, "project")
+            with open(project_cert_file, 'w') as keyfile:
+                keyfile.write(project_cert)
+
+            enc, err = utils.execute('openssl', 'verify', '-CAfile',
+                    project_cert_file, '-verbose', signed_cert_file)
+            self.assertFalse(err)
 
     def test_encrypt_decrypt_x509(self):
         with utils.tempdir() as tmpdir:
@@ -222,7 +239,17 @@ e6fCXWECgYEAqgpGvva5kJ1ISgNwnJbwiNw0sOT9BMOsdNZBElf0kJIIy6FMPvap
         self._test_ssh_encrypt_decrypt_text(key_with_spaces_in_comment)
 
     def _test_ssh_encrypt_decrypt_text(self, key):
-        pass
+        enc = crypto.ssh_encrypt_text(self.pubkey, self.text)
+        self.assertIsInstance(enc, bytes)
+        # Comparison between bytes and str raises a TypeError
+        # when using python3 -bb
+        if six.PY2:
+            self.assertNotEqual(enc, self.text)
+        result = self._ssh_decrypt_text(self.prikey, enc)
+        self.assertIsInstance(result, bytes)
+        if six.PY3:
+            result = result.decode('utf-8')
+        self.assertEqual(result, self.text)
 
     def test_ssh_encrypt_failure(self):
         self.assertRaises(exception.EncryptionFailure,
