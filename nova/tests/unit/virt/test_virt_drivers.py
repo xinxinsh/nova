@@ -12,6 +12,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import base64
 import sys
 import traceback
 
@@ -21,17 +22,24 @@ import netaddr
 from oslo_log import log as logging
 from oslo_serialization import jsonutils
 from oslo_utils import importutils
+from oslo_utils import timeutils
 import six
 
 from nova.compute import manager
+from nova.console import type as ctype
+from nova import context
 from nova import exception
 from nova import objects
 from nova import test
 from nova.tests import fixtures as nova_fixtures
+from nova.tests.unit import fake_block_device
 from nova.tests.unit.image import fake as fake_image
 from nova.tests.unit import utils as test_utils
+from nova.tests.unit.virt.libvirt import fake_libvirt_utils
+from nova.virt import block_device as driver_block_device
 from nova.virt import event as virtevent
 from nova.virt import fake
+from nova.virt import hardware
 from nova.virt import libvirt
 from nova.virt.libvirt import imagebackend
 
@@ -250,7 +258,14 @@ class _VirtDriverTestCase(_FakeDriverBackendTestCase):
                        imagebackend.Image._get_driver_format)
 
     def _get_running_instance(self, obj=True):
-        pass
+        instance_ref = test_utils.get_test_instance(obj=obj)
+        network_info = test_utils.get_test_network_info()
+        network_info[0]['network']['subnets'][0]['meta']['dhcp_server'] = \
+            '1.1.1.1'
+        image_meta = test_utils.get_test_image_object(None, instance_ref)
+        self.connection.spawn(self.ctxt, instance_ref, image_meta,
+                              [], 'herp', network_info=network_info)
+        return instance_ref, network_info
 
     @catch_notimplementederror
     def test_init_host(self):
@@ -266,7 +281,12 @@ class _VirtDriverTestCase(_FakeDriverBackendTestCase):
 
     @catch_notimplementederror
     def test_spawn(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        domains = self.connection.list_instances()
+        self.assertIn(instance_ref['name'], domains)
+
+        num_instances = self.connection.get_num_instances()
+        self.assertEqual(1, num_instances)
 
     @catch_notimplementederror
     def test_snapshot_not_running(self):
@@ -279,15 +299,23 @@ class _VirtDriverTestCase(_FakeDriverBackendTestCase):
 
     @catch_notimplementederror
     def test_snapshot_running(self):
-        pass
+        img_ref = self.image_service.create(self.ctxt, {'name': 'snap-1'})
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.snapshot(self.ctxt, instance_ref, img_ref['id'],
+                                 lambda *args, **kwargs: None)
 
     @catch_notimplementederror
     def test_post_interrupted_snapshot_cleanup(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.post_interrupted_snapshot_cleanup(self.ctxt,
+                instance_ref)
 
     @catch_notimplementederror
     def test_reboot(self):
-        pass
+        reboot_type = "SOFT"
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.reboot(self.ctxt, instance_ref, network_info,
+                               reboot_type)
 
     @catch_notimplementederror
     def test_get_host_ip_addr(self):
@@ -301,71 +329,124 @@ class _VirtDriverTestCase(_FakeDriverBackendTestCase):
 
     @catch_notimplementederror
     def test_set_admin_password(self):
-        pass
+        instance, network_info = self._get_running_instance(obj=True)
+        self.connection.set_admin_password(instance, 'p4ssw0rd')
 
     @catch_notimplementederror
     def test_inject_file(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.inject_file(instance_ref,
+                                    base64.b64encode('/testfile'),
+                                    base64.b64encode('testcontents'))
 
     @catch_notimplementederror
     def test_resume_state_on_host_boot(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.resume_state_on_host_boot(self.ctxt, instance_ref,
+                                                  network_info)
 
     @catch_notimplementederror
     def test_rescue(self):
-        pass
+        image_meta = objects.ImageMeta.from_dict({})
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.rescue(self.ctxt, instance_ref, network_info,
+                               image_meta, '')
 
     @catch_notimplementederror
     def test_unrescue_unrescued_instance(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.unrescue(instance_ref, network_info)
 
     @catch_notimplementederror
     def test_unrescue_rescued_instance(self):
-        pass
+        image_meta = objects.ImageMeta.from_dict({})
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.rescue(self.ctxt, instance_ref, network_info,
+                               image_meta, '')
+        self.connection.unrescue(instance_ref, network_info)
 
     @catch_notimplementederror
     def test_poll_rebooting_instances(self):
-        pass
+        instances = [self._get_running_instance()]
+        self.connection.poll_rebooting_instances(10, instances)
 
     @catch_notimplementederror
     def test_migrate_disk_and_power_off(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        flavor_ref = test_utils.get_test_flavor()
+        self.connection.migrate_disk_and_power_off(
+            self.ctxt, instance_ref, 'dest_host', flavor_ref,
+            network_info)
 
     @catch_notimplementederror
     def test_power_off(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.power_off(instance_ref)
 
     @catch_notimplementederror
     def test_power_on_running(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.power_on(self.ctxt, instance_ref,
+                                 network_info, None)
 
     @catch_notimplementederror
     def test_power_on_powered_off(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.power_off(instance_ref)
+        self.connection.power_on(self.ctxt, instance_ref, network_info, None)
 
     @catch_notimplementederror
     def test_trigger_crash_dump(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.trigger_crash_dump(instance_ref)
 
     @catch_notimplementederror
     def test_soft_delete(self):
-        pass
+        instance_ref, network_info = self._get_running_instance(obj=True)
+        self.connection.soft_delete(instance_ref)
 
     @catch_notimplementederror
     def test_restore_running(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.restore(instance_ref)
 
     @catch_notimplementederror
     def test_restore_soft_deleted(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.soft_delete(instance_ref)
+        self.connection.restore(instance_ref)
+
+    @catch_notimplementederror
+    def test_pause(self):
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.pause(instance_ref)
+
+    @catch_notimplementederror
+    def test_unpause_unpaused_instance(self):
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.unpause(instance_ref)
+
+    @catch_notimplementederror
+    def test_unpause_paused_instance(self):
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.pause(instance_ref)
+        self.connection.unpause(instance_ref)
+
+    @catch_notimplementederror
+    def test_suspend(self):
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.suspend(self.ctxt, instance_ref)
 
     @catch_notimplementederror
     def test_resume_unsuspended_instance(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.resume(self.ctxt, instance_ref, network_info)
 
     @catch_notimplementederror
     def test_resume_suspended_instance(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.suspend(self.ctxt, instance_ref)
+        self.connection.resume(self.ctxt, instance_ref, network_info)
 
     @catch_notimplementederror
     def test_destroy_instance_nonexistent(self):
@@ -375,7 +456,12 @@ class _VirtDriverTestCase(_FakeDriverBackendTestCase):
 
     @catch_notimplementederror
     def test_destroy_instance(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        self.assertIn(instance_ref['name'],
+                      self.connection.list_instances())
+        self.connection.destroy(self.ctxt, instance_ref, network_info)
+        self.assertNotIn(instance_ref['name'],
+                         self.connection.list_instances())
 
     @catch_notimplementederror
     def test_get_volume_connector(self):
@@ -397,19 +483,82 @@ class _VirtDriverTestCase(_FakeDriverBackendTestCase):
 
     @catch_notimplementederror
     def test_attach_detach_volume(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        connection_info = {
+            "driver_volume_type": "fake",
+            "serial": "fake_serial",
+            "data": {}
+        }
+        self.assertIsNone(
+            self.connection.attach_volume(None, connection_info, instance_ref,
+                                          '/dev/sda'))
+        self.assertIsNone(
+            self.connection.detach_volume(connection_info, instance_ref,
+                                          '/dev/sda'))
 
     @catch_notimplementederror
     def test_swap_volume(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        self.assertIsNone(
+            self.connection.attach_volume(None, {'driver_volume_type': 'fake',
+                                                 'data': {}},
+                                          instance_ref,
+                                          '/dev/sda'))
+        self.assertIsNone(
+            self.connection.swap_volume({'driver_volume_type': 'fake',
+                                         'data': {}},
+                                        {'driver_volume_type': 'fake',
+                                         'data': {}},
+                                        instance_ref,
+                                        '/dev/sda', 2))
 
     @catch_notimplementederror
     def test_attach_detach_different_power_states(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        connection_info = {
+            "driver_volume_type": "fake",
+            "serial": "fake_serial",
+            "data": {}
+        }
+        self.connection.power_off(instance_ref)
+        self.connection.attach_volume(None, connection_info, instance_ref,
+                                      '/dev/sda')
+
+        bdm = {
+            'root_device_name': None,
+            'swap': None,
+            'ephemerals': [],
+            'block_device_mapping': driver_block_device.convert_volumes([
+                objects.BlockDeviceMapping(
+                    self.ctxt,
+                    **fake_block_device.FakeDbBlockDeviceDict(
+                        {'id': 1, 'instance_uuid': instance_ref['uuid'],
+                         'device_name': '/dev/sda',
+                         'source_type': 'volume',
+                         'destination_type': 'volume',
+                         'delete_on_termination': False,
+                         'snapshot_id': None,
+                         'volume_id': 'abcdedf',
+                         'volume_size': None,
+                         'no_device': None
+                         })),
+                ])
+        }
+        bdm['block_device_mapping'][0]['connection_info'] = (
+            {'driver_volume_type': 'fake', 'data': {}})
+        with mock.patch.object(
+                driver_block_device.DriverVolumeBlockDevice, 'save'):
+            self.connection.power_on(
+                    self.ctxt, instance_ref, network_info, bdm)
+            self.connection.detach_volume(connection_info,
+                                          instance_ref,
+                                          '/dev/sda')
 
     @catch_notimplementederror
     def test_get_info(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        info = self.connection.get_info(instance_ref)
+        self.assertIsInstance(info, hardware.InstanceInfo)
 
     @catch_notimplementederror
     def test_get_info_for_unknown_instance(self):
@@ -420,51 +569,81 @@ class _VirtDriverTestCase(_FakeDriverBackendTestCase):
 
     @catch_notimplementederror
     def test_get_diagnostics(self):
-        pass
+        instance_ref, network_info = self._get_running_instance(obj=True)
+        self.connection.get_diagnostics(instance_ref)
 
     @catch_notimplementederror
     def test_get_instance_diagnostics(self):
-        pass
+        instance_ref, network_info = self._get_running_instance(obj=True)
+        instance_ref['launched_at'] = timeutils.utcnow()
+        self.connection.get_instance_diagnostics(instance_ref)
 
     @catch_notimplementederror
     def test_block_stats(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        stats = self.connection.block_stats(instance_ref, 'someid')
+        self.assertEqual(len(stats), 5)
 
     @catch_notimplementederror
     def test_get_console_output(self):
-        pass
+        fake_libvirt_utils.files['dummy.log'] = ''
+        instance_ref, network_info = self._get_running_instance()
+        console_output = self.connection.get_console_output(self.ctxt,
+            instance_ref)
+        self.assertIsInstance(console_output, six.string_types)
 
     @catch_notimplementederror
     def test_get_vnc_console(self):
-        pass
+        instance, network_info = self._get_running_instance(obj=True)
+        vnc_console = self.connection.get_vnc_console(self.ctxt, instance)
+        self.assertIsInstance(vnc_console, ctype.ConsoleVNC)
 
     @catch_notimplementederror
     def test_get_spice_console(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        spice_console = self.connection.get_spice_console(self.ctxt,
+                                                          instance_ref)
+        self.assertIsInstance(spice_console, ctype.ConsoleSpice)
 
     @catch_notimplementederror
     def test_get_rdp_console(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        rdp_console = self.connection.get_rdp_console(self.ctxt, instance_ref)
+        self.assertIsInstance(rdp_console, ctype.ConsoleRDP)
 
     @catch_notimplementederror
     def test_get_serial_console(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        serial_console = self.connection.get_serial_console(self.ctxt,
+                                                            instance_ref)
+        self.assertIsInstance(serial_console, ctype.ConsoleSerial)
 
     @catch_notimplementederror
     def test_get_mks_console(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        mks_console = self.connection.get_mks_console(self.ctxt,
+                                                      instance_ref)
+        self.assertIsInstance(mks_console, ctype.ConsoleMKS)
 
     @catch_notimplementederror
     def test_get_console_pool_info(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        console_pool = self.connection.get_console_pool_info(instance_ref)
+        self.assertIn('address', console_pool)
+        self.assertIn('username', console_pool)
+        self.assertIn('password', console_pool)
 
     @catch_notimplementederror
     def test_refresh_security_group_rules(self):
-        pass
+        # FIXME: Create security group and add the instance to it
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.refresh_security_group_rules(1)
 
     @catch_notimplementederror
     def test_refresh_instance_security_rules(self):
-        pass
+        # FIXME: Create security group and add the instance to it
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.refresh_instance_security_rules(instance_ref)
 
     @catch_notimplementederror
     def test_ensure_filtering_for_instance(self):
@@ -480,15 +659,24 @@ class _VirtDriverTestCase(_FakeDriverBackendTestCase):
         self.connection.unfilter_instance(instance_ref, network_info)
 
     def test_live_migration(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        fake_context = context.RequestContext('fake', 'fake')
+        migration = objects.Migration(context=fake_context, id=1)
+        migrate_data = objects.LibvirtLiveMigrateData(
+            migration=migration, bdms=[], block_migration=False)
+        self.connection.live_migration(self.ctxt, instance_ref, 'otherhost',
+                                       lambda *a: None, lambda *a: None,
+                                       migrate_data=migrate_data)
 
     @catch_notimplementederror
     def test_live_migration_force_complete(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.live_migration_force_complete(instance_ref)
 
     @catch_notimplementederror
     def test_live_migration_abort(self):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.live_migration_abort(instance_ref)
 
     @catch_notimplementederror
     def _check_available_resource_fields(self, host_status):
@@ -623,11 +811,16 @@ class _VirtDriverTestCase(_FakeDriverBackendTestCase):
 
     @catch_notimplementederror
     def test_get_instance_disk_info(self):
-        pass
+        # This should be implemented by any driver that supports live migrate.
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.get_instance_disk_info(instance_ref,
+                                               block_device_info={})
 
     @catch_notimplementederror
     def test_get_device_name_for_instance(self):
-        pass
+        instance, _ = self._get_running_instance()
+        self.connection.get_device_name_for_instance(
+            instance, [], mock.Mock(spec=objects.BlockDeviceMapping))
 
     def test_network_binding_host_id(self):
         # NOTE(jroll) self._get_running_instance calls spawn(), so we can't
@@ -689,7 +882,8 @@ class LibvirtConnTestCase(_VirtDriverTestCase, test.TestCase):
         return self.ctxt
 
     def test_force_hard_reboot(self):
-        pass
+        self.flags(wait_soft_reboot_seconds=0, group='libvirt')
+        self.test_reboot()
 
     def test_migrate_disk_and_power_off(self):
         # there is lack of fake stuff to execute this method. so pass.
@@ -751,12 +945,20 @@ class LibvirtConnTestCase(_VirtDriverTestCase, test.TestCase):
     @catch_notimplementederror
     @mock.patch.object(libvirt.driver.LibvirtDriver, '_unplug_vifs')
     def test_unplug_vifs_with_destroy_vifs_false(self, unplug_vifs_mock):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.cleanup(self.ctxt, instance_ref, network_info,
+                                destroy_vifs=False)
+        self.assertEqual(unplug_vifs_mock.call_count, 0)
 
     @catch_notimplementederror
     @mock.patch.object(libvirt.driver.LibvirtDriver, '_unplug_vifs')
     def test_unplug_vifs_with_destroy_vifs_true(self, unplug_vifs_mock):
-        pass
+        instance_ref, network_info = self._get_running_instance()
+        self.connection.cleanup(self.ctxt, instance_ref, network_info,
+                                destroy_vifs=True)
+        self.assertEqual(unplug_vifs_mock.call_count, 1)
+        unplug_vifs_mock.assert_called_once_with(instance_ref,
+                                            network_info, True)
 
     def test_get_device_name_for_instance(self):
         self.skipTest("Tested by the nova.tests.unit.virt.libvirt suite")
@@ -765,4 +967,8 @@ class LibvirtConnTestCase(_VirtDriverTestCase, test.TestCase):
     @mock.patch('nova.utils.get_image_from_system_metadata')
     @mock.patch("nova.virt.libvirt.host.Host.has_min_version")
     def test_set_admin_password(self, ver, mock_image):
-        pass
+        self.flags(virt_type='kvm', group='libvirt')
+        mock_image.return_value = {"properties": {
+            "hw_qemu_guest_agent": "yes"}}
+        instance, network_info = self._get_running_instance(obj=True)
+        self.connection.set_admin_password(instance, 'p4ssw0rd')
