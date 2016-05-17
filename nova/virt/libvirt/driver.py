@@ -4855,6 +4855,19 @@ class LibvirtDriver(driver.ComputeDriver):
             config = self.vif_driver.get_config(
                 instance, vif, image_meta,
                 flavor, virt_type, self._host)
+
+            try:
+                # set bandwidth to vif if exist in db
+                bandwidth = objects.Bandwidth.get_by_port_id(context,
+                                                             vif['id'])
+                if int(bandwidth['inbound_kilo_bytes']) > 0:
+                    config.vif_inbound_average = \
+                        bandwidth['inbound_kilo_bytes']
+                if int(bandwidth['outbound_kilo_bytes']) > 0:
+                    config.vif_outbound_average = \
+                        bandwidth['outbound_kilo_bytes']
+            except exception.BandwidthNotFound:
+                pass
             guest.add_device(config)
 
         consolepty = self._create_consoles(virt_type, guest, instance, flavor,
@@ -8522,3 +8535,31 @@ class LibvirtDriver(driver.ComputeDriver):
                 raise exception.NovaException(msg)
             finally:
                 libvirt_utils.file_delete(memory_file)
+
+    def set_interface_bandwidth(self, instance, vif,
+                                inbound_kilo_bytes, outbound_kilo_bytes):
+        virt_dom = self._lookup_by_name(instance['name'])
+        flavor = objects.Flavor.get_by_id(
+            nova_context.get_admin_context(read_deleted='yes'),
+            instance['instance_type_id'])
+
+        cfg = self.vif_driver.get_config(instance, vif, None, flavor,
+                                         CONF.libvirt.virt_type)
+        cfg.vif_inbound_average = inbound_kilo_bytes
+        cfg.vif_outbound_average = outbound_kilo_bytes
+
+        try:
+            flags = libvirt.VIR_DOMAIN_AFFECT_CONFIG
+            state = LIBVIRT_POWER_STATE[virt_dom.info()[0]]
+            if state == power_state.RUNNING:
+                flags |= libvirt.VIR_DOMAIN_AFFECT_LIVE
+            virt_dom.updateDeviceFlags(cfg.to_xml(), flags)
+        except libvirt.libvirtError as ex:
+            error_code = ex.get_error_code()
+            if error_code == libvirt.VIR_ERR_NO_DOMAIN:
+                LOG.info(_LI("During set_interface_bandwidth, "
+                             "instance disappeared."), instance=instance)
+            else:
+                LOG.error(_('setting network interface bandwidth failed.'),
+                          instance=instance)
+                raise exception.SetInterfaceBandwidthFailed(instance)

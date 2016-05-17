@@ -2153,3 +2153,16 @@ class SetFixedIpFail(Invalid):
 class MountCdromFailed(NovaException):
     msg_fmt = _("Unable to mount/unmount cdrom to instance %(instance)s,"
                 " error: %(error)s")
+
+
+class BandwidthExists(NovaException):
+    msg_fmt = _(
+        "Bandwidth associated with port_id %(port_id)s already exists.")
+
+
+class BandwidthNotFound(NotFound):
+    msg_fmt = _("No bandwidth associated with port_id %(port_id)s.")
+
+
+class SetInterfaceBandwidthFailed(NovaException):
+    msg_fmt = _("Failed to set network interface for instance %(instance)s")

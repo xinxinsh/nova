@@ -7154,3 +7154,36 @@ class ComputeManager(manager.Manager):
 
         instance.task_state = None
         instance.save()
+
+    @object_compat
+    @wrap_exception()
+    @wrap_instance_fault
+    def set_interface_bandwidth(self, context, instance, port_id,
+                                inbound_kilo_bytes, outbound_kilo_bytes):
+        try:
+            bandwidth = objects.Bandwidth.get_by_port_id(context, port_id)
+        except exception.BandwidthNotFound:
+            bandwidth = objects.Bandwidth(
+                context, port_id=port_id,
+                inbound_kilo_bytes=inbound_kilo_bytes,
+                outbound_kilo_bytes=outbound_kilo_bytes)
+            bandwidth.create(context)
+        else:
+            bandwidth.inbound_kilo_bytes = inbound_kilo_bytes
+            bandwidth.outbound_kilo_bytes = outbound_kilo_bytes
+            bandwidth.save()
+
+        """Set bandwidth for a network interafce."""
+        network_info = self.network_api.get_instance_nw_info(context, instance)
+
+        condemned = None
+        for vif in network_info:
+            if vif['id'] == port_id:
+                condemned = vif
+                break
+        if condemned is None:
+            raise exception.PortNotFound(
+                _("Port %s is not attached") % port_id)
+
+        self.driver.set_interface_bandwidth(
+            instance, condemned, inbound_kilo_bytes, outbound_kilo_bytes)

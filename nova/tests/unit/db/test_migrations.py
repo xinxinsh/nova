@@ -886,12 +886,6 @@ class NovaMigrationsCheckers(test_migrations.ModelsMigrationsSync,
                                 ['deleted', 'created_at'])
 
 
-class TestNovaMigrationsSQLite(NovaMigrationsCheckers,
-                               test_base.DbTestCase,
-                               test.NoDBTestCase):
-    pass
-
-
 class TestNovaMigrationsMySQL(NovaMigrationsCheckers,
                               test_base.MySQLOpportunisticTestCase,
                               test.NoDBTestCase):
