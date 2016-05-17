@@ -45,8 +45,6 @@ class SshKeyActionController(wsgi.Controller):
         context = req.environ['nova.context']
         authorize(context)
 
-        LOG.audit(_("Delete public ssh key with id:%s"), id, context=context)
-
         instance = common.get_instance(self.compute_api,
                                        context,
                                        id)

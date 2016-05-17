@@ -8108,8 +8108,8 @@ class LibvirtDriver(driver.ComputeDriver):
         for line_num in range((len(output) - 6) / 4):
             output_num = 4 * (line_num + 1)
 
-            if('Keyboard' in output[output_num]
-               or 'Mouse' in output[output_num]):
+            if('keyboard' in output[output_num].lower()
+               or 'mouse' in output[output_num].lower()):
                 continue
             else:
                 usb_device = {}
@@ -8312,7 +8312,8 @@ class LibvirtDriver(driver.ComputeDriver):
 
         returnval = dict(state='qga_proxy_downtime')
         try:
-            recv = utils.http_post(uri, instance.uuid)
+            headers = {}
+            recv = utils.http_post(uri, instance.uuid, headers)
             body = recv.read().strip()
             if recv.code != 200:
                 raise Exception("Send to qga proxf failed: %s" % body)
