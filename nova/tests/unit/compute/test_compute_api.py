@@ -3305,8 +3305,12 @@ class _ComputeAPIUnitTestMixIn(object):
     @mock.patch.object(compute_api.API, '_get_instances_by_filters',
                        return_value=[])
     @mock.patch.object(compute_api.API, '_create_instance')
-    def test_skip_policy_check(self, mock_create, mock_get_ins_by_filters,
-                               mock_get, mock_pause, mock_action, mock_save):
+    @mock.patch.object(objects.ServiceList,
+                              'get_all', return_value=[])
+    def test_skip_policy_check(self, mock_get_all, mock_create,
+                               mock_get_ins_by_filters,
+                               mock_get, mock_pause,
+                               mock_action, mock_save):
         policy.reset()
         rules = {'compute:pause': '!',
                  'compute:get': '!',
@@ -3337,8 +3341,10 @@ class _ComputeAPIUnitTestMixIn(object):
         api.create(self.context, None, None)
 
     @mock.patch.object(compute_api.API, '_get_instances_by_filters')
-    def test_tenant_to_project_conversion(self, mock_get):
+    @mock.patch.object(objects.ServiceList, 'get_all')
+    def test_tenant_to_project_conversion(self, mock_get_all, mock_get):
         mock_get.return_value = []
+        mock_get_all.return_value = []
         api = compute_api.API()
         api.get_all(self.context, search_opts={'tenant_id': 'foo'})
         filters = mock_get.call_args_list[0][0][1]

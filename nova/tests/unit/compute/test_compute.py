@@ -10356,7 +10356,9 @@ class ComputeAPIIpFilterTestCase(test.NoDBTestCase):
                 expected_ids = expected_ids[:expected_len]
             self.assertEqual(expected_ids, [inst.id for inst in insts])
 
-    def test_ip_filtering_no_limit_to_db(self):
+    @mock.patch.object(objects.ServiceList, 'get_all')
+    def test_ip_filtering_no_limit_to_db(self, mock_get):
+        mock_get.return_value = []
         c = context.get_admin_context()
         # Limit is not supplied to the DB when using an IP filter
         with mock.patch('nova.objects.InstanceList.get_by_filters') as m_get:
@@ -10365,7 +10367,9 @@ class ComputeAPIIpFilterTestCase(test.NoDBTestCase):
             kwargs = m_get.call_args[1]
             self.assertIsNone(kwargs['limit'])
 
-    def test_ip_filtering_pass_limit_to_db(self):
+    @mock.patch.object(objects.ServiceList, 'get_all')
+    def test_ip_filtering_pass_limit_to_db(self, mock_get):
+        mock_get.return_value = []
         c = context.get_admin_context()
         # No IP filter, verify that the limit is passed
         with mock.patch('nova.objects.InstanceList.get_by_filters') as m_get:

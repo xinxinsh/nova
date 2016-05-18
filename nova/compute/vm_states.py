@@ -26,6 +26,8 @@ health and progress.
 
 See http://wiki.openstack.org/VMState
 """
+# vm can't be managed
+UNMANAGED = 'unmanaged'
 
 ACTIVE = 'active'  # VM is running
 BUILDING = 'building'  # VM only exists in DB

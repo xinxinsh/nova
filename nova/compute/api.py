@@ -2131,6 +2131,18 @@ class API(base.Base):
         if filter_ip:
             inst_models = self._ip_filter(inst_models, filters, orig_limit)
 
+        # it sets vm_state and task_state,this value is temp and only
+        # show vm status ,the purpose of  getting mmediately status
+        # other compute node it set instance task_state none it set
+        # instance vm_state unmanaged update all instances_vm_status
+
+        self.update_instances_vm_status_by_cache(context)
+
+        for inst_model in inst_models:
+            if inst_model.host in self.instances_vm_status:
+                inst_model.vm_state = vm_states.UNMANAGED
+                inst_model.task_state = "none"
+
         if want_objects:
             return inst_models
 
@@ -2140,6 +2152,16 @@ class API(base.Base):
             instances.append(obj_base.obj_to_primitive(inst_model))
 
         return instances
+
+    def update_instances_vm_status_by_cache(self, context):
+        """update instances vm states"""
+
+        self.instances_vm_status = []
+        services = objects.ServiceList.get_all(context)
+        for service in services:
+            if service.topic == "compute":
+                if not self.servicegroup_api.service_is_up(service):
+                    self.instances_vm_status.append(service.host)
 
     @staticmethod
     def _ip_filter(inst_models, filters, limit):
