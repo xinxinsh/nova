@@ -836,6 +836,15 @@ class VirtualInterface(BASE, NovaBase, models.SoftDeleteMixin):
     uuid = Column(String(36))
 
 
+class Bandwidth(BASE, NovaBase, models.SoftDeleteMixin):
+    """Represents bandwidth for a port."""
+    __tablename__ = 'bandwidth'
+    port_id = Column(String(36), primary_key=True)
+    inbound_kilo_bytes = Column(Integer, default=0)
+    outbound_kilo_bytes = Column(Integer, default=0)
+    deleted = Column(Integer, default=0)
+
+
 # TODO(vish): can these both come from the same baseclass?
 class FixedIp(BASE, NovaBase, models.SoftDeleteMixin):
     """Represents a fixed IP for an instance."""

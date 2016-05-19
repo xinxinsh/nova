@@ -1666,6 +1666,35 @@ def _fixed_ip_count_by_project(context, project_id):
 
 
 @require_context
+@main_context_manager.reader
+def bandwidth_get_by_port_id(context, port_id):
+    result = model_query(context, models.Bandwidth, read_deleted="yes").\
+        filter_by(port_id=port_id).first()
+    return result
+
+
+@require_context
+@pick_context_manager_writer
+def bandwidth_create(context, values):
+    Bandwidth_ref = models.Bandwidth()
+    Bandwidth_ref.update(values)
+    try:
+        Bandwidth_ref.save(context.session)
+    except db_exc.DBDuplicateEntry:
+        raise exception.BandwidthExists(port_id=values['port_id'])
+    return Bandwidth_ref
+
+
+@require_context
+@pick_context_manager_writer
+def bandwidth_update(context, port_id, values):
+    bandwidth_get_by_port_id(context, port_id).update(values)
+
+
+###################
+
+
+@require_context
 @pick_context_manager_writer
 def virtual_interface_create(context, values):
     """Create a new virtual interface record in the database.

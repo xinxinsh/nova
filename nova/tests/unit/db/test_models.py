@@ -26,6 +26,7 @@ class TestSoftDeletesDeprecated(test.NoDBTestCase):
             'aggregate_hosts',
             'aggregate_metadata',
             'aggregates',
+            'bandwidth',
             'block_device_mapping',
             'bw_usage_cache',
             'cells',

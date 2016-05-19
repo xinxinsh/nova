@@ -4855,6 +4855,200 @@ class LibvirtDriver(driver.ComputeDriver):
             config = self.vif_driver.get_config(
                 instance, vif, image_meta,
                 flavor, virt_type, self._host)
+
+            # set bandwidth to vif if exist in db
+            bandwidth = objects.Bandwidth.get_by_port_id(context,
+                                                         vif['id'])
+            if bandwidth:
+                if int(bandwidth['inbound_kilo_bytes']) > 0:
+                    config.vif_inbound_average = \
+                        bandwidth['inbound_kilo_bytes']
+                if int(bandwidth['outbound_kilo_bytes']) > 0:
+                    config.vif_outbound_average = \
+                        bandwidth['outbound_kilo_bytes']
+            else:
+                pass
+            guest.add_device(config)
+
+        consolepty = self._create_consoles(virt_type, guest, instance, flavor,
+                                           image_meta, caps)
+        if virt_type != 'parallels':
+            consolepty.type = "pty"
+            guest.add_device(consolepty)
+
+        tablet = self._get_guest_usb_tablet(guest.os_type)
+        if tablet:
+            guest.add_device(tablet)
+
+        if (CONF.spice.enabled and CONF.spice.agent_enabled and
+                virt_type not in ('lxc', 'uml', 'xen')):
+            channel = vconfig.LibvirtConfigGuestChannel()
+            channel.target_name = "com.redhat.spice.0"
+            guest.add_device(channel)
+
+        # NB some versions of libvirt support both SPICE and VNC
+        # at the same time. We're not trying to second guess which
+        # those versions are. We'll just let libvirt report the
+        # errors appropriately if the user enables both.
+        add_video_driver = False
+        if ((CONF.vnc.enabled and
+             virt_type not in ('lxc', 'uml'))):
+            graphics = vconfig.LibvirtConfigGuestGraphics()
+            graphics.type = "vnc"
+            graphics.keymap = CONF.vnc.keymap
+            graphics.listen = CONF.vnc.vncserver_listen
+            guest.add_device(graphics)
+            add_video_driver = True
+
+        if (CONF.spice.enabled and
+                virt_type not in ('lxc', 'uml', 'xen')):
+            graphics = vconfig.LibvirtConfigGuestGraphics()
+            graphics.type = "spice"
+            graphics.keymap = CONF.spice.keymap
+            graphics.listen = CONF.spice.server_listen
+            guest.add_device(graphics)
+            add_video_driver = True
+
+        if add_video_driver:
+            self._add_video_driver(guest, image_meta, flavor)
+
+        # Qemu guest agent only support 'qemu' and 'kvm' hypervisor
+        if virt_type in ('qemu', 'kvm'):
+            self._set_qemu_guest_agent(guest, flavor, instance, image_meta)
+
+        if virt_type in ('xen', 'qemu', 'kvm'):
+            for pci_dev in pci_manager.get_instance_pci_devs(instance):
+                guest.add_device(self._get_guest_pci_device(pci_dev))
+        else:
+            if len(pci_devs) > 0:
+                raise exception.PciDeviceUnsupportedHypervisor(
+                    type=virt_type)
+
+        if 'hw_watchdog_action' in flavor.extra_specs:
+            LOG.warn(_LW('Old property name "hw_watchdog_action" is now '
+                         'deprecated and will be removed in the next release. '
+                         'Use updated property name '
+                         '"hw:watchdog_action" instead'), instance=instance)
+        # TODO(pkholkin): accepting old property name 'hw_watchdog_action'
+        #                should be removed in the next release
+        watchdog_action = (flavor.extra_specs.get('hw_watchdog_action') or
+                           flavor.extra_specs.get('hw:watchdog_action')
+                           or 'disabled')
+        watchdog_action = image_meta.properties.get('hw_watchdog_action',
+                                                    watchdog_action)
+
+        # NB(sross): currently only actually supported by KVM/QEmu
+        if watchdog_action != 'disabled':
+            if watchdog_actions.is_valid_watchdog_action(watchdog_action):
+                bark = vconfig.LibvirtConfigGuestWatchdog()
+                bark.action = watchdog_action
+                guest.add_device(bark)
+            else:
+                raise exception.InvalidWatchdogAction(action=watchdog_action)
+
+        # Memory balloon device only support 'qemu/kvm' and 'xen' hypervisor
+        if (virt_type in ('xen', 'qemu', 'kvm') and
+                CONF.libvirt.mem_stats_period_seconds > 0):
+            balloon = vconfig.LibvirtConfigMemoryBalloon()
+            if virt_type in ('qemu', 'kvm'):
+                balloon.model = 'virtio'
+            else:
+                balloon.model = 'xen'
+            balloon.period = CONF.libvirt.mem_stats_period_seconds
+            guest.add_device(balloon)
+
+        return guest
+
+    def _get_guest_config_test_Jenkins(self, instance, network_info,
+                                       image_meta, disk_info, rescue=None,
+                                       block_device_info=None, context=None):
+        """Get config data for parameters.
+
+        :param rescue: optional dictionary that should contain the key
+            'ramdisk_id' if a ramdisk is needed for the rescue image and
+            'kernel_id' if a kernel is needed for the rescue image.
+        """
+        flavor = instance.flavor
+        inst_path = libvirt_utils.get_instance_path(instance)
+        disk_mapping = disk_info['mapping']
+
+        virt_type = CONF.libvirt.virt_type
+        guest = vconfig.LibvirtConfigGuest()
+        guest.virt_type = virt_type
+        guest.name = instance.name
+        guest.uuid = instance.uuid
+        # We are using default unit for memory: KiB
+        guest.memory = flavor.memory_mb * units.Ki
+        guest.vcpus = flavor.vcpus
+        allowed_cpus = hardware.get_vcpu_pin_set()
+        pci_devs = pci_manager.get_instance_pci_devs(instance, 'all')
+
+        guest_numa_config = self._get_guest_numa_config(
+            instance.numa_topology, flavor, pci_devs, allowed_cpus, image_meta)
+
+        guest.cpuset = guest_numa_config.cpuset
+        guest.cputune = guest_numa_config.cputune
+        guest.numatune = guest_numa_config.numatune
+
+        guest.membacking = self._get_guest_memory_backing_config(
+            instance.numa_topology,
+            guest_numa_config.numatune,
+            flavor)
+
+        guest.metadata.append(self._get_guest_config_meta(context,
+                                                          instance))
+        guest.idmaps = self._get_guest_idmaps()
+
+        self._update_guest_cputune(guest, flavor, virt_type)
+
+        guest.cpu = self._get_guest_cpu_config(
+            flavor, image_meta, guest_numa_config.numaconfig,
+            instance.numa_topology)
+
+        # Notes(yjiang5): we always sync the instance's vcpu model with
+        # the corresponding config file.
+        instance.vcpu_model = self._cpu_config_to_vcpu_model(
+            guest.cpu, instance.vcpu_model)
+
+        if 'root' in disk_mapping:
+            root_device_name = block_device.prepend_dev(
+                disk_mapping['root']['dev'])
+        else:
+            root_device_name = None
+
+        if root_device_name:
+            # NOTE(yamahata):
+            # for nova.api.ec2.cloud.CloudController.get_metadata()
+            instance.root_device_name = root_device_name
+
+        guest.os_type = (vm_mode.get_from_instance(instance) or
+                self._get_guest_os_type(virt_type))
+        caps = self._host.get_capabilities()
+
+        self._configure_guest_by_virt_type(guest, virt_type, caps, instance,
+                                           image_meta, flavor,
+                                           root_device_name)
+        if virt_type not in ('lxc', 'uml'):
+            self._conf_non_lxc_uml(virt_type, guest, root_device_name, rescue,
+                    instance, inst_path, image_meta, disk_info)
+
+        self._set_features(guest, instance.os_type, caps, virt_type)
+        self._set_clock(context, instance, block_device_info,
+                        guest, instance.os_type, image_meta, virt_type)
+
+        storage_configs = self._get_guest_storage_config(
+                instance, image_meta, disk_info, rescue, block_device_info,
+                flavor, guest.os_type)
+        for config in storage_configs:
+            guest.add_device(config)
+
+        cdrom = self._get_guest_cdrom_device(instance, None, True)
+        guest.add_device(cdrom)
+
+        for vif in network_info:
+            config = self.vif_driver.get_config(
+                instance, vif, image_meta,
+                flavor, virt_type, self._host)
             guest.add_device(config)
 
         consolepty = self._create_consoles(virt_type, guest, instance, flavor,
@@ -8523,3 +8717,32 @@ class LibvirtDriver(driver.ComputeDriver):
                 raise exception.NovaException(msg)
             finally:
                 libvirt_utils.file_delete(memory_file)
+
+    def set_interface_bandwidth(self, instance, vif,
+                                inbound_kilo_bytes, outbound_kilo_bytes):
+
+        virt_dom = self._lookup_by_name(instance['name'])
+        flavor = objects.Flavor.get_by_id(
+            nova_context.get_admin_context(read_deleted='yes'),
+            instance['instance_type_id'])
+
+        cfg = self.vif_driver.get_config(instance, vif, None, flavor,
+                                         CONF.libvirt.virt_type, self._host)
+        cfg.vif_inbound_average = inbound_kilo_bytes
+        cfg.vif_outbound_average = outbound_kilo_bytes
+
+        try:
+            flags = libvirt.VIR_DOMAIN_AFFECT_CONFIG
+            state = LIBVIRT_POWER_STATE[virt_dom.info()[0]]
+            if state == power_state.RUNNING:
+                flags |= libvirt.VIR_DOMAIN_AFFECT_LIVE
+            virt_dom.updateDeviceFlags(cfg.to_xml(), flags)
+        except libvirt.libvirtError as ex:
+            error_code = ex.get_error_code()
+            if error_code == libvirt.VIR_ERR_NO_DOMAIN:
+                LOG.info(_LI("During set_interface_bandwidth, "
+                             "instance disappeared."), instance=instance)
+            else:
+                LOG.error(_('setting network interface bandwidth failed.'),
+                          instance=instance)
+                raise exception.SetInterfaceBandwidthFailed(instance)

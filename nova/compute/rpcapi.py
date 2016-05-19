@@ -1210,3 +1210,13 @@ class ComputeAPI(object):
         return cctxt.call(ctxt, 'rollback_to_memory_snapshot',
                           instance=instance,
                           image_meta=image_meta)
+
+    def set_interface_bandwidth(self, ctxt, instance, port_id,
+                                inbound_kilo_bytes, outbound_kilo_bytes):
+        version = '4.6'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                                    version=version)
+        cctxt.cast(ctxt, 'set_interface_bandwidth',
+                   instance=instance, port_id=port_id,
+                   inbound_kilo_bytes=inbound_kilo_bytes,
+                   outbound_kilo_bytes=outbound_kilo_bytes)

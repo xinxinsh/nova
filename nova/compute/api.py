@@ -3909,6 +3909,15 @@ class API(base.Base):
                                   instance_actions.UNQUIESCE)
         self.compute_rpcapi.unquiesce_instance(context, instance)
 
+    @wrap_check_policy
+    def set_interface_bandwidth(self, context, instance, port_id,
+                                inbound_kilo_bytes, outbound_kilo_bytes):
+        """Set bandwidth for an instance interface."""
+        self.compute_rpcapi.set_interface_bandwidth(
+            context, instance, port_id,
+            inbound_kilo_bytes,
+            outbound_kilo_bytes)
+
 
 class HostAPI(base.Base):
     """Sub-set of the Compute Manager API for managing host operations."""
