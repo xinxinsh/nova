@@ -8239,10 +8239,13 @@ class LibvirtDriver(driver.ComputeDriver):
         if suggested_dev_name is not None:
             LOG.warn(_LW('Ignoring supplied device name: %(suggested_dev)s'),
                      {'suggested_dev': suggested_dev_name}, instance=instance)
-
-        # NOTE(ndipanov): get_info_from_bdm will generate the new device name
-        #                 only when it's actually not set on the bd object
-        block_device_obj.device_name = None
+        # add support to attach volume to vda
+        # default will be ignoring in M
+        if six.text_type(suggested_dev_name) != '/dev/vda':
+            # NOTE(ndipanov): get_info_from_bdm will generate
+            # the new device name
+            # only when it's actually not set on the bd object
+            block_device_obj.device_name = None
         disk_info = blockinfo.get_info_from_bdm(
             instance, CONF.libvirt.virt_type, instance.image_meta,
             block_device_obj, mapping=instance_info['mapping'])
