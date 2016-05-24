@@ -25,7 +25,8 @@ from nova import servicegroup
 from oslo_log import log as logging
 
 LOG = logging.getLogger(__name__)
-authorize = extensions.extension_authorizer('compute', 'cdrom')
+ALIAS = "cdrom"
+authorize = extensions.os_compute_authorizer(ALIAS)
 
 
 class CdromController(wsgi.Controller):
@@ -55,19 +56,20 @@ class CdromActionController(wsgi.Controller):
         super(CdromActionController, self).__init__(*args, **kwargs)
         self.compute_api = compute.API()
 
+    @wsgi.response(202)
+    @extensions.expected_errors(404)
     @wsgi.action('listMountedCdrom')
     def list_cdrom(self, req, id, body):
         """List mounted iso of instance."""
         context = req.environ['nova.context']
         authorize(context)
 
-        instance = common.get_instance(self.compute_api, context, id,
-                                       want_objects=True)
-
+        instance = common.get_instance(self.compute_api, context, id)
         mounted = self.compute_api.list_mounted_cdrom(context, instance)
-
         return dict(mountedIso=mounted)
 
+    @wsgi.response(202)
+    @extensions.expected_errors(404)
     @wsgi.action('changeCdrom')
     def change_cdrom(self, req, id, body):
         """change cdrom of instance."""
@@ -81,8 +83,7 @@ class CdromActionController(wsgi.Controller):
             else:
                 iso_name = body['changeCdrom']['isoName']
 
-        instance = common.get_instance(self.compute_api, context, id,
-                                       want_objects=True)
+        instance = common.get_instance(self.compute_api, context, id)
         try:
             self.compute_api.change_cdrom(context, instance, iso_name)
         except exception.NovaException as e:
@@ -92,13 +93,12 @@ class CdromActionController(wsgi.Controller):
 
 # Note: The class name is as it has to be for this to be loaded as an
 # extension--only first character capitalized.
-class Cdrom(extensions.ExtensionDescriptor):
+class Cdrom(extensions.V21APIExtensionBase):
     """Cdrom support."""
 
     name = "Cdrom"
     alias = "cdrom"
-    namespace = "os-cdrom"
-    updated = "2015-01-10T00:00:00+00:00"
+    version = 1
 
     def get_resources(self):
         resources = extensions.ResourceExtension(

@@ -87,7 +87,7 @@ class MultinicController(wsgi.Controller):
                 subnet_id=item['subnetId'],
                 ip_address=item['ipAddress']))
 
-        instance = self._get_instance(context, id, want_objects=True)
+        instance = common.get_instance(self.compute_api, context, id)
 
         self.compute_api.set_fixed_ip(
             context, instance, port_id, fixed_ips)
@@ -101,7 +101,7 @@ class MultinicController(wsgi.Controller):
         context = req.environ['nova.context']
         authorize(context)
 
-        instance = self._get_instance(context, id, want_objects=True)
+        instance = common.get_instance(self.compute_api, context, id)
 
         port_id = body['addFixedIpV2']['portId']
         subnet_id = body['addFixedIpV2']['subnetId']
