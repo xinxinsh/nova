@@ -2036,3 +2036,188 @@ def instance_tag_delete_all(context, instance_uuid):
 def instance_tag_exists(context, instance_uuid, tag):
     """Check if specified tag exist on the instance."""
     return IMPL.instance_tag_exists(context, instance_uuid, tag)
+
+
+###################
+
+
+def instance_memory_devices_get_by_instance_uuid(context,
+                                                 instance_uuid,
+                                                 use_slave=False):
+    """Get the instance memory devices
+
+    :param instance_uuid: = uuid of the instance memory hotplugin
+    """
+    return IMPL.instance_memory_devices_get_by_instance_uuid(context,
+                                                             instance_uuid,
+                                                             use_slave=
+                                                             use_slave)
+
+
+def instance_memory_devices_update_by_uuid(context, instance_uuid, updates):
+    """Update the instance memory devices by instance uuid
+
+    :param instance_uuid: = uuid of the instance memory hotplugin
+    :param updates: A dict of updates to apply
+    """
+    return IMPL.instance_memory_devices_update_by_uuid(context, instance_uuid,
+                                                       updates)
+
+
+def instance_memory_devices_create(context, values):
+    """Create the memory devices hotplugin"""
+    return IMPL.instance_memory_devices_create(context, values)
+
+
+def instance_memory_devices_get(context, memory_id, columns_to_join=None):
+    """Get instance memory device by its id."""
+    return IMPL.instance_memory_devices_get(context, memory_id,
+                                            columns_to_join)
+
+
+def instance_memory_devices_get_by_name_uuid(context, name, instance_uuid,
+                                             columns_to_join=None):
+    """Get instance memory device by its name and instance uuid."""
+    return IMPL.instance_memory_devices_get_by_name_uuid(context, name,
+                                                         instance_uuid,
+                                                         columns_to_join)
+
+
+def instance_memory_devices_destroy_by_name_uuid(context, name, instance_uuid):
+    """Destroy instance memory device by its name and instance uuid."""
+    return IMPL.instance_memory_devices_destroy_by_name_uuid(context,
+                                                             name,
+                                                             instance_uuid)
+
+
+####################
+
+
+def ext_volume_get_all(context, get_image_file=False, filters=None):
+    return IMPL.ext_volume_get_all(context, get_image_file, filters)
+
+
+def ext_volume_get_by_id(context, volume_id, get_image_file=False,
+                         get_qos_specs=False):
+    """Find ext_volume by id
+    Raises if ext_volume does not exist.
+    """
+    return IMPL.ext_volume_get_by_id(context, volume_id, get_image_file,
+                                     get_qos_specs)
+
+
+def ext_volume_create(context, values):
+    """Create ext_volume"""
+    return IMPL.ext_volume_create(context, values)
+
+
+def ext_volume_update(context, volume_id, values):
+    """Update ext_volume"""
+    return IMPL.ext_volume_update(context, volume_id, values)
+
+
+def ext_volume_destroy(context, volume_id):
+    """Update ext_volume"""
+    return IMPL.ext_volume_destroy(context, volume_id)
+
+
+###################
+
+
+def ext_volume_snapshot_get_all(context, filters):
+    return IMPL.ext_volume_snapshot_get_all(context, filters)
+
+
+def ext_volume_snapshot_get_by_id(context, id):
+    return IMPL.ext_volume_snapshot_get_by_id(context, id)
+
+
+def ext_volume_snapshot_create(context, values):
+    return IMPL.ext_volume_snapshot_create(context, values)
+
+
+def ext_volume_snapshot_update(context, id, values):
+    return IMPL.ext_volume_snapshot_update(context, id, values)
+
+
+def ext_volume_snapshot_destroy(context, id):
+    return IMPL.ext_volume_snapshot_destroy(context, id)
+
+
+####################
+
+
+def ext_image_file_get_all_parents(context, root):
+    return IMPL.ext_image_file_get_all_parents(context, root)
+
+
+def ext_image_file_get_by_root(context, root):
+    return IMPL.ext_image_file_get_by_root(context, root)
+
+
+def ext_image_file_get_by_id(context, ext_image_file_id):
+    """Find ext_image_file by id
+    Raises if ext_image_file does not exist.
+    """
+    return IMPL.ext_image_file_get_by_id(context, ext_image_file_id)
+
+
+def ext_image_file_create(context, values):
+    """Create ext_image_file"""
+    return IMPL.ext_image_file_create(context, values)
+
+
+def ext_image_file_update(context, ext_image_file_id, values):
+    """Update ext_image_file"""
+    return IMPL.ext_image_file_update(context, ext_image_file_id, values)
+
+
+def ext_image_file_destroy(context, id):
+    """Destroy ext_image_file"""
+    return IMPL.ext_image_file_destroy(context, id)
+
+
+###################
+
+
+def ext_instance_snapshot_get_all(context, filters):
+    return IMPL.ext_instance_snapshot_get_all(context, filters)
+
+
+def ext_instance_snapshot_get_by_id(context, id):
+    return IMPL.ext_instance_snapshot_get_by_id(context, id)
+
+
+def ext_instance_snapshot_create(context, values):
+    return IMPL.ext_instance_snapshot_create(context, values)
+
+
+def ext_instance_snapshot_update(context, id, values):
+    return IMPL.ext_instance_snapshot_update(context, id)
+
+
+def ext_instance_snapshot_destroy(context, id):
+    return IMPL.ext_instance_snapshot_destroy(context, id)
+
+
+###################
+
+
+def ext_qos_get_all(context,):
+    return IMPL.ext_qos_get_all(context)
+
+
+def ext_qos_get_by_id(context, id):
+    return IMPL.ext_qos_get_by_id(context, id)
+
+
+def ext_qos_create(context, values):
+    return IMPL.ext_qos_create(context, values)
+
+
+def ext_qos_update(context, id, values):
+    return IMPL.ext_qos_update(context, id, values)
+
+
+def ext_qos_destroy(context, id):
+    return IMPL.ext_qos_destroy(context, id)

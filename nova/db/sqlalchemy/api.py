@@ -6888,3 +6888,352 @@ def instance_tag_exists(context, instance_uuid, tag):
     q = context.session.query(models.Tag).filter_by(
         resource_id=instance_uuid, tag=tag)
     return context.session.query(q.exists()).scalar()
+
+
+###################
+
+
+@require_context
+def instance_memory_devices_create(context, values):
+    inst_mem_dev = models.InstanceMemoryDevice()
+    inst_mem_dev.update(values)
+    inst_mem_dev.save()
+    return inst_mem_dev
+
+
+@require_context
+def instance_memory_devices_update_by_uuid(context, instance_uuid, values):
+    return model_query(context, models.InstanceMemoryDevice).\
+        filter_by(instance_uuid=instance_uuid).\
+        update(values)
+
+
+@require_context
+def _instance_memory_devices_get_by_instance_uuid_query(context,
+                                                        use_slave=False):
+    return model_query(context, models.InstanceMemoryDevice,
+                       session=None, read_deleted="no", use_slave=use_slave)
+
+
+@require_context
+def instance_memory_devices_get_by_instance_uuid(context, instance_uuid,
+                                                 use_slave=False):
+    query = _instance_memory_devices_get_by_instance_uuid_query(
+        context, use_slave=use_slave).filter_by(instance_uuid=instance_uuid).\
+        order_by(asc("created_at"), asc("id"))
+    instance_memory_device = query.all()
+    return instance_memory_device
+
+
+@require_context
+def instance_memory_devices_get_by_name_uuid(context, name, instance_uuid,
+                                             columns_to_join=None):
+    query = model_query(context, models.InstanceMemoryDevice, session=None,
+            read_deleted="no")
+    query.filter_by(name=name).filter_by(instance_uuid=instance_uuid).all()
+    result = query.first()
+    if not result:
+        raise exception.MemNotFound(mem_name=name)
+    return result
+
+
+@require_context
+def instance_memory_devices_destroy_by_name_uuid(context, name, instance_uuid):
+    model_query(context, models.InstanceMemoryDevice, session=None,
+                read_deleted="no").filter_by(name=name).\
+                filter_by(instance_uuid=instance_uuid).soft_delete()
+
+
+###################
+
+
+@require_context
+def ext_qos_get_all(context, session=None):
+    query = model_query(context, models.ExtQos, session=session)
+    return query.all()
+
+
+@require_context
+def ext_qos_get_by_id(context, id, session=None):
+    query = model_query(context, models.ExtQos, session=session).\
+        filter_by(id=id)
+    result = query.first()
+    if not result:
+        raise exception.QoSSpecsNotFound(specs_id=id)
+    return result
+
+
+@require_context
+def ext_qos_create(context, values):
+    Ref = models.ExtQos()
+    Ref.update(values)
+    try:
+        Ref.save()
+    except db_exc.DBDuplicateEntry:
+        raise exception.QoSSpecsExists(specs_id=values['id'])
+    return Ref
+
+
+@require_context
+def ext_qos_update(context, id, values):
+    session = context.session
+    with session.begin():
+        ext_qos_get_by_id(context, id, session=session).\
+            update(values)
+
+
+@require_context
+def ext_qos_destroy(context, id):
+    model_query(context, models.ExtQos).\
+        filter_by(id=id).soft_delete()
+
+
+###################
+
+
+@require_context
+def ext_instance_snapshot_get_all(context, filters, session=None):
+    query = model_query(context, models.ExtInstanceSnapshot, session=session)
+    if 'host' in filters:
+        query = query.filter_by(host=filters['host'])
+    if 'instance_id' in filters:
+        query = query.filter_by(instance_id=filters['instance_id'])
+    return query.all()
+
+
+@require_context
+def ext_instance_snapshot_get_by_id(context, id, session=None):
+    query = model_query(context, models.ExtInstanceSnapshot, session=session).\
+        filter_by(id=id)
+    result = query.first()
+    if not result:
+        raise exception.SnapshotNotFound(snapshot_id=id)
+    return result
+
+
+@require_context
+def ext_instance_snapshot_create(context, values):
+    Ref = models.ExtInstanceSnapshot()
+    Ref.update(values)
+    try:
+        Ref.save()
+    except db_exc.DBDuplicateEntry:
+        raise exception.VolumeFileExists(snapshot_id=values['id'])
+    return Ref
+
+
+@require_context
+def ext_instance_snapshot_update(context, id, values):
+    session = context.session
+    with session.begin():
+        ext_instance_snapshot_get_by_id(context, id, session=session).\
+            update(values)
+
+
+@require_context
+def ext_instance_snapshot_destroy(context, sanpshot_id):
+    session = context.session
+    with session.begin():
+        count = model_query(context, models.ExtInstanceSnapshot, session=session).\
+            filter_by(id=sanpshot_id).soft_delete()
+        if count == 0:
+            raise exception.SnapshotNotFound(sanpshot_id=sanpshot_id)
+
+        query = model_query(context, models.ExtVolumeSnapshot, session=session).\
+            filter_by(instance_snapshot_id=sanpshot_id).soft_delete()
+
+        volume_snaps = query.all()
+        for vs in volume_snaps:
+            model_query(context, models.ExtImageFile, session=session).\
+                filter_by(id=vs['image_file_id']).soft_delete()
+
+        query.soft_delete()
+
+
+###################
+
+
+@require_context
+def ext_volume_snapshot_get_all(context, filters):
+    query = model_query(context, models.ExtVolumeSnapshot)
+    if 'host' in filters:
+        query = query.filter_by(host=filters['host'])
+    if 'volume_id' in filters:
+        query = query.filter_by(volume_id=filters['volume_id'])
+    if 'instance_snapshot_id' in filters:
+        query = query.filter_by(instance_snapshot_id=
+                                filters['instance_snapshot_id'])
+    return query.all()
+
+
+@require_context
+def ext_volume_snapshot_get_by_id(context, id, session=None):
+    query = model_query(context, models.ExtVolumeSnapshot, session=session).\
+        filter_by(id=id)
+    result = query.first()
+    if not result:
+        raise exception.SnapshotNotFound(snapshot_id=id)
+    return result
+
+
+@require_context
+def ext_volume_snapshot_create(context, values):
+    Ref = models.ExtVolumeSnapshot()
+    Ref.update(values)
+    try:
+        Ref.save()
+    except db_exc.DBDuplicateEntry:
+        raise exception.VolumeFileExists(snapshot_id=values['id'])
+    return Ref
+
+
+@require_context
+def ext_volume_snapshot_update(context, id, values):
+    session = context.session
+    with session.begin():
+        ext_volume_snapshot_get_by_id(context, id, session=session).\
+            update(values)
+
+
+@require_context
+def ext_volume_snapshot_destroy(context, sanpshot_id):
+    session = context.session
+    with session.begin():
+        ref = ext_volume_snapshot_get_by_id(context, sanpshot_id, session)
+        count = model_query(context, models.ExtVolumeSnapshot, session=session).\
+            filter_by(id=sanpshot_id).soft_delete()
+        if count == 0:
+            raise exception.SnapshotNotFound(sanpshot_id=sanpshot_id)
+
+        model_query(context, models.ExtImageFile, session=session).\
+            filter_by(id=ref['image_file_id']).soft_delete()
+
+        return ref
+
+
+###################
+
+
+@require_context
+def ext_volume_get_all(context, get_image_file=False, filters=None,
+                       session=None):
+    query = model_query(context, models.ExtVolume, session=session)
+    if get_image_file:
+        query = query.options(joinedload('image_file'))
+
+    if 'host' in filters:
+        query = query.filter_by(host=filters['host'])
+    if 'instance_id' in filters:
+        query = query.filter_by(instance_id=filters['instance_id'])
+    if 'status' in filters:
+        query = query.filter_by(status=filters['status'])
+    if 'qos_id' in filters:
+        query = query.filter_by(qos_id=filters['qos_id'])
+    return query.all()
+
+
+@require_context
+def ext_volume_get_by_id(context, id, get_image_file=False,
+                         get_qos_specs=False, session=None):
+    query = model_query(context, models.ExtVolume, session=session).\
+        filter_by(id=id)
+
+    if get_image_file:
+        query = query.options(joinedload('image_file'))
+    if get_qos_specs:
+        query = query.options(joinedload('qos'))
+    result = query.first()
+    if not result:
+        raise exception.VolumeNotFound(volume_id=id)
+    return result
+
+
+@require_context
+def ext_volume_create(context, values):
+    Ref = models.ExtVolume()
+    Ref.update(values)
+    try:
+        Ref.save()
+    except db_exc.DBDuplicateEntry:
+        raise exception.VolumeFileExists(volume_id=values['id'])
+    return Ref
+
+
+@require_context
+def ext_volume_update(context, id, values):
+    session = context.session
+    with session.begin():
+        ext_volume_get_by_id(context, id, session=session).\
+            update(values)
+
+
+@require_context
+def ext_volume_destroy(context, volume_id):
+    session = context.session
+    with session.begin():
+        volume_ref = ext_volume_get_by_id(context, volume_id, True, session)
+        count = model_query(context, models.ExtVolume, session=session).\
+            filter_by(id=volume_id).soft_delete()
+        if count == 0:
+            raise exception.VolumeNotFound(volume_id=volume_id)
+
+        root_image_id = volume_ref['image_file']['root']
+        model_query(context, models.ExtImageFile, session=session).\
+            filter_by(root=root_image_id).soft_delete()
+
+        model_query(context, models.ExtVolumeSnapshot, session=session).\
+            filter_by(volume_id=volume_id).soft_delete()
+
+        return volume_ref
+
+
+###################
+
+
+@require_context
+def ext_image_file_get_all_parents(context, root, session=None):
+    query = model_query(context, models.ExtImageFile, session=session,
+                read_deleted='yes').filter_by(root=root)
+    return query.all()
+
+
+@require_context
+def ext_image_file_get_by_root(context, root, session=None):
+    query = model_query(context, models.ExtImageFile, session=session,
+                read_deleted='yes').filter_by(root=root)
+    return query.all()
+
+
+@require_context
+def ext_image_file_get_by_id(context, id, session=None):
+    query = model_query(context, models.ExtImageFile, session=session).\
+        filter_by(id=id)
+    result = query.first()
+    if not result:
+        raise exception.ExtImageFileNotFound(ext_image_file_id=id)
+    return result
+
+
+@require_context
+def ext_image_file_create(context, values):
+    Ref = models.ExtImageFile()
+    Ref.update(values)
+    try:
+        Ref.save()
+    except db_exc.DBDuplicateEntry:
+        raise exception.ExtImageFileExists(ext_image_file_id=values['id'])
+    return Ref
+
+
+@require_context
+def ext_image_file_update(context, id, values):
+    session = context.session
+    with session.begin():
+        ext_image_file_get_by_id(context, id, session=session).\
+            update(values)
+
+
+@require_context
+def ext_image_file_destroy(context, id):
+    return model_query(context, models.ExtImageFile).\
+            filter_by(id=id).soft_delete()

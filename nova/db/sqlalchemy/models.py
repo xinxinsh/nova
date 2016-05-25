@@ -1535,3 +1535,152 @@ class ResourceProviderAggregate(BASE, models.ModelBase):
 
     resource_provider_id = Column(Integer, primary_key=True, nullable=False)
     aggregate_id = Column(Integer, primary_key=True, nullable=False)
+
+
+class InstanceMemoryDevice(BASE, NovaBase, models.SoftDeleteMixin):
+    """Represents memory device that can be hotplugin to instances.
+    """
+    __tablename__ = 'instance_memory_devices'
+    __table_args__ = (
+        Index('memory_devices_instance_uuid_deleted',
+              'instance_uuid', 'deleted'),
+        # schema.UniqueConstraint(
+        #    "model", "name", "target_size", "target_node", "deleted",
+        #    name="uniq_memory_devices0model0name0target_size0address0deleted")
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    model = Column(String(255), nullable=False)
+    name = Column(String(255), nullable=True)
+    instance_uuid = Column(String(36), nullable=False)
+    target_size = Column(String(255), nullable=False)
+    target_node = Column(String(255), nullable=False)
+    source_pagesize = Column(String(255), nullable=True)
+    source_nodemask = Column(String(255), nullable=True)
+
+
+class ExtVolumeSnapshot(BASE, NovaBase):
+    """Represents a volume snapshot."""
+    __tablename__ = 'ext_volume_snapshots'
+    __table_args__ = ()
+    id = Column(String(36), primary_key=True, nullable=False)
+    deleted = Column(String(36), default="")
+
+    @property
+    def name(self):
+        return CONF.snapshot_name_template % self.id
+
+    @property
+    def volume_name(self):
+        return CONF.volume_name_template % self.volume_id
+
+    user_id = Column(String(255))
+    project_id = Column(String(255))
+
+    volume_id = Column(String(36), nullable=False)
+    instance_snapshot_id = Column(String(36), nullable=False)
+    image_file_id = Column(String(36), nullable=False)
+    status = Column(String(255))
+    progress = Column(String(255))
+    volume_size = Column(Integer)
+
+    display_name = Column(String(255))
+    display_description = Column(String(255))
+
+
+class ExtInstanceSnapshot(BASE, NovaBase):
+    """Represents a VM Snapshot."""
+    __tablename__ = 'ext_instance_snapshots'
+    __table_args__ = ()
+    id = Column(String(36), primary_key=True, nullable=False)
+    deleted = Column(String(36), default="")
+
+    user_id = Column(String(255))
+    project_id = Column(String(255))
+
+    instance_id = Column(String(36), nullable=False)
+    status = Column(String(255))
+    progress = Column(String(255))
+
+    display_name = Column(String(255))
+    display_description = Column(String(255))
+
+
+class ExtImageFile(BASE, NovaBase):
+    """Represents image file."""
+    __tablename__ = 'ext_image_files'
+    deleted = Column(String(36), default="")
+    id = Column(String(36), primary_key=True, nullable=False)
+    host = Column(String(length=255))
+    parent = Column(String(length=255))
+    root = Column(String(length=255))
+    active = Column(Boolean)
+    format = Column(String(16))
+
+
+class ExtQos(BASE, NovaBase):
+    """Represents a quality of service specs to a ext volume."""
+    __tablename__ = 'ext_qos'
+    __table_args__ = ()
+    id = Column(String(36), primary_key=True, nullable=False)
+    deleted = Column(String(36), default="")
+
+    read_bytes_sec = Column(Integer)
+    read_iops_sec = Column(Integer)
+    write_bytes_sec = Column(Integer)
+    write_iops_sec = Column(Integer)
+    total_bytes_sec = Column(Integer)
+    total_iops_sec = Column(Integer)
+
+    display_name = Column(String(255))
+    display_description = Column(String(255))
+
+
+class ExtVolume(BASE, NovaBase):
+    """Represents a block storage device that can be attached to a VM."""
+    __tablename__ = 'ext_volumes'
+    __table_args__ = (
+        Index('volumes_instance_uuid_idx', 'instance_uuid'),
+    )
+    id = Column(String(36), primary_key=True, nullable=False)
+    deleted = Column(String(36), default="")
+
+    @property
+    def name(self):
+        return CONF.volume_name_template % self.id
+
+    user_id = Column(String(255))
+    project_id = Column(String(255))
+
+    snapshot_id = Column(String(36))
+    glance_image_id = Column(String(255))
+    image_file_id = Column(Integer)
+    qos_id = Column(String(36))
+    host = Column(String(255))
+    size = Column(Integer)
+    availability_zone = Column(String(255))
+    instance_uuid = Column(String(36))
+    mountpoint = Column(String(255))
+    attach_time = Column(DateTime)
+    bootable = Column(Boolean, default=False)
+    status = Column(String(255))  # TODO(vish): enum?
+    attach_status = Column(String(255))  # TODO(vish): enum
+    migration_status = Column(String(255))
+    scheduled_at = Column(DateTime)
+    launched_at = Column(DateTime)
+    terminated_at = Column(DateTime)
+
+    display_name = Column(String(255))
+    display_description = Column(String(255))
+
+    image_file = orm.relationship(ExtImageFile,
+                            foreign_keys=image_file_id,
+                            primaryjoin='and_('
+                                'ExtVolume.image_file_id == ExtImageFile.id,'
+                                'ExtImageFile.active == 1,'
+                                'ExtVolume.deleted == 0)')
+    qos = orm.relationship(ExtQos,
+                            foreign_keys=qos_id,
+                            primaryjoin='and_('
+                                'ExtVolume.qos_id == ExtQos.id,'
+                                'ExtVolume.deleted == 0)')
