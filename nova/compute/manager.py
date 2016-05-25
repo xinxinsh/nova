@@ -3793,7 +3793,7 @@ class ComputeManager(manager.Manager):
             compute_utils.notify_usage_exists(self.notifier, context, instance,
                                               current_period=True)
             self._notify_about_instance_usage(
-                    context, instance, "resize.prep.start")
+                context, instance, "cold_migration.start")
             try:
                 self._prep_resize(context, image, instance,
                                   instance_type, quotas,
@@ -3816,7 +3816,7 @@ class ComputeManager(manager.Manager):
                         new_instance_type_id=instance_type.id)
 
                 self._notify_about_instance_usage(
-                    context, instance, "resize.prep.end",
+                    context, instance, "cold_migration.end",
                     extra_usage_info=extra_usage_info)
 
     def _reschedule_resize_or_reraise(self, context, image, instance, exc_info,
@@ -4188,13 +4188,15 @@ class ComputeManager(manager.Manager):
         """Pause an instance on this host."""
         context = context.elevated()
         LOG.info(_LI('Pausing'), context=context, instance=instance)
-        self._notify_about_instance_usage(context, instance, 'pause.start')
+        self._notify_about_instance_usage(context, instance,
+                                          'pause_instance.start')
         self.driver.pause(instance)
         instance.power_state = self._get_power_state(context, instance)
         instance.vm_state = vm_states.PAUSED
         instance.task_state = None
         instance.save(expected_task_state=task_states.PAUSING)
-        self._notify_about_instance_usage(context, instance, 'pause.end')
+        self._notify_about_instance_usage(context, instance,
+                                          'pause_instance.end')
 
     @wrap_exception()
     @reverts_task_state
@@ -4814,6 +4816,10 @@ class ComputeManager(manager.Manager):
                   {'volume_id': bdm.volume_id,
                   'mountpoint': bdm['mount_device']},
                  context=context, instance=instance)
+
+        self._notify_about_instance_usage(context, instance,
+                                          "attach_volume.start")
+
         try:
             bdm.attach(context, instance, self.volume_api, self.driver,
                        do_check_attach=False, do_driver_attach=True)
@@ -4828,7 +4834,7 @@ class ComputeManager(manager.Manager):
 
         info = {'volume_id': bdm.volume_id}
         self._notify_about_instance_usage(
-            context, instance, "volume.attach", extra_usage_info=info)
+            context, instance, "attach_volume.end", extra_usage_info=info)
 
     def _driver_detach_volume(self, context, instance, bdm):
         """Do the actual driver detach using block device mapping."""
@@ -4883,6 +4889,9 @@ class ComputeManager(manager.Manager):
                             like rebuild, when we don't want to destroy BDM
 
         """
+
+        self._notify_about_instance_usage(context, instance,
+                                          "detach_volume.start")
 
         bdm = objects.BlockDeviceMapping.get_by_volume_and_instance(
                 context, volume_id, instance.uuid)
@@ -4961,10 +4970,12 @@ class ComputeManager(manager.Manager):
             bdm.destroy()
 
         info = dict(volume_id=volume_id)
-        self._notify_about_instance_usage(
-            context, instance, "volume.detach", extra_usage_info=info)
         self.volume_api.detach(context.elevated(), volume_id, instance.uuid,
                                attachment_id)
+
+        self._notify_about_instance_usage(context, instance,
+                                          "detach_volume.end",
+                                          extra_usage_info=info)
 
     @wrap_exception()
     @wrap_instance_fault
@@ -5375,6 +5386,9 @@ class ComputeManager(manager.Manager):
         # and use the status field to denote when the accounting has been
         # done on source/destination. For now, this is just here for status
         # reporting
+        self._notify_about_instance_usage(context, instance,
+                                          'live_migration.start')
+
         self._set_migration_status(migration, 'preparing')
 
         got_migrate_data_object = isinstance(migrate_data,
@@ -5403,6 +5417,9 @@ class ComputeManager(manager.Manager):
                 block_migration, disk, dest, migrate_data)
         except Exception:
             with excutils.save_and_reraise_exception():
+                self._notify_about_instance_usage(context, instance,
+                                                  'live_migration.error')
+
                 LOG.exception(_LE('Pre live migration failed at %s'),
                               dest, instance=instance)
                 self._set_migration_status(migration, 'failed')
@@ -5423,9 +5440,15 @@ class ComputeManager(manager.Manager):
             # Executing live migration
             # live_migration might raises exceptions, but
             # nothing must be recovered in this version.
+            self._notify_about_instance_usage(context, instance,
+                                              'live_migration.error')
+
             LOG.exception(_LE('Live migration failed.'), instance=instance)
             with excutils.save_and_reraise_exception():
                 self._set_migration_status(migration, 'failed')
+
+        self._notify_about_instance_usage(context, instance,
+                                          'live_migration.end')
 
     @wrap_exception()
     @wrap_instance_event
@@ -6949,6 +6972,9 @@ class ComputeManager(manager.Manager):
 
         @utils.synchronized(instance.uuid)
         def _do_quiesce_instance(context, instance):
+            self._notify_about_instance_usage(context, instance,
+                                              "quiesce_instance.start")
+
             if instance.vm_state == vm_states.STOPPED:
                 return
 
@@ -6968,8 +6994,14 @@ class ComputeManager(manager.Manager):
                 instance.vm_state = vm_states.FROZEN
                 instance.task_state = None
                 instance.save()
+                self._notify_about_instance_usage(context, instance,
+                                                  "quiesce_instance.end")
             except (exception.InstanceQuiesceNotSupported,
                     NotImplementedError) as err:
+                self._notify_about_instance_usage(context, instance,
+                                                  'quiesce_instance.error',
+                                                  fault=err)
+
                 if strutils.bool_from_string(image_meta['properties'].get(
                         'os_require_quiesce')):
                     self._set_instance_error_state(context, instance)
@@ -6982,6 +7014,9 @@ class ComputeManager(manager.Manager):
                              context=context, instance=instance)
             except Exception:
                 with excutils.save_and_reraise_exception():
+                    self._notify_about_instance_usage(context, instance,
+                                                      'quiesce_instance.error')
+
                     self._set_instance_error_state(context, instance)
                     try:
                         image_service = glance.get_default_image_service()
@@ -7022,6 +7057,9 @@ class ComputeManager(manager.Manager):
 
         @utils.synchronized(instance.uuid)
         def _do_unquiesce_instance(context, instance, mapping):
+            self._notify_about_instance_usage(context, instance,
+                                              "unquiesce_instance.start")
+
             if instance.vm_state == vm_states.STOPPED:
                 return
 
@@ -7049,8 +7087,15 @@ class ComputeManager(manager.Manager):
                 instance.vm_state = vm_states.ACTIVE
                 instance.task_state = None
                 instance.save()
+                self._notify_about_instance_usage(context, instance,
+                                                  "unquiesce_instance.end")
             except Exception:
                 with excutils.save_and_reraise_exception():
+                    self._notify_about_instance_usage(
+                        context,
+                        instance,
+                        "unquiesce_instance.error")
+
                     self._set_instance_error_state(context, instance)
 
         _do_unquiesce_instance(context, instance, mapping)
