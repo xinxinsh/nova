@@ -3464,13 +3464,15 @@ class TestNeutronv2WithMock(test.TestCase):
                         {'id': 'fake-port-1',
                          'binding:host_id': instance.host},
                         {'id': 'fake-port-2'}]}
+
+        migration = dict(dest_compute=instance.host)
         list_ports_mock = mock.Mock(return_value=fake_ports)
         get_client_mock.return_value.list_ports = list_ports_mock
         update_port_mock = mock.Mock()
         get_client_mock.return_value.update_port = update_port_mock
 
         self.api._update_port_binding_for_instance(self.context, instance,
-                                                   instance.host)
+                                                   migration)
         # Assert that update_port was only called on the port without a host.
         update_port_mock.assert_called_once_with(
             'fake-port-2', {'port': {'binding:host_id': instance.host}})
@@ -3987,17 +3989,19 @@ class TestNeutronv2Portbinding(TestNeutronv2Base):
 
     def test_setup_instance_network_on_host_true(self):
         instance = self._fake_instance_object(self.instance)
+        migration = dict(dest_compute='fake_host')
         self._test_update_port_binding_true('fake_host',
                                             'setup_instance_network_on_host',
                                             self.context,
                                             instance,
-                                            'fake_host')
+                                            migration)
 
     def test_setup_instance_network_on_host_exception(self):
         instance = self._fake_instance_object(self.instance)
+        migration = dict(dest_compute='fake_host')
         self._test_update_port_true_exception(
             'fake_host', 'setup_instance_network_on_host',
-            self.context, instance, 'fake_host')
+            self.context, instance, migration)
 
     def test_associate_not_implemented(self):
         api = neutronapi.API()

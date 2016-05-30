@@ -708,11 +708,12 @@ class ComputeAPI(object):
         cctxt.cast(ctxt, 'pause_instance', instance=instance)
 
     def post_live_migration_at_destination(self, ctxt, instance,
-            block_migration, host):
+            block_migration, host, migrate_data=None):
         version = '4.0'
         cctxt = self.client.prepare(server=host, version=version)
         cctxt.cast(ctxt, 'post_live_migration_at_destination',
-            instance=instance, block_migration=block_migration)
+                   instance=instance, block_migration=block_migration,
+                   migrate_data=migrate_data)
 
     def pre_live_migration(self, ctxt, instance, block_migration, disk,
             host, migrate_data=None):

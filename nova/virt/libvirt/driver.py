@@ -626,6 +626,26 @@ class LibvirtDriver(driver.ComputeDriver):
 
         self._live_migration_flags = self._block_migration_flags = None
 
+    def _correct_interface_infos(self, old_xml_str, replace_pci_address):
+        """Replace the pci devices  which have already be used by
+        other vms in destination host.
+        """
+        xml_doc = etree.fromstring(old_xml_str)
+        for dev in xml_doc.findall('./devices/interface'):
+
+            mac_tag = dev.find('mac')
+            tag_address = mac_tag.get('address')
+            if tag_address in replace_pci_address:
+                pci_addr = replace_pci_address.get(tag_address)
+                source_tag = dev.find('source')
+                tag_dev = pci_utils.get_ifname_by_pci_address(pci_addr)
+                if source_tag is not None:
+                    old_ifname = source_tag.get('dev')
+                    source_tag.set('dev', tag_dev)
+                    LOG.debug('ifname %s => %s', (old_ifname, tag_dev))
+
+        return etree.tostring(xml_doc)
+
     def _get_volume_drivers(self):
         return libvirt_volume_drivers
 
@@ -6479,6 +6499,13 @@ class LibvirtDriver(driver.ComputeDriver):
                                                listen_addrs,
                                                serial_listen_addr)
                 try:
+                    if 'replace_pci_address' in migrate_data:
+                        replace_pci_address = migrate_data.get(
+                            'replace_pci_address', {})
+                        if replace_pci_address:
+                            new_xml_str = self._correct_interface_infos(
+                                new_xml_str, replace_pci_address)
+
                     if self._host.has_min_version(
                             MIN_LIBVIRT_BLOCK_LM_WITH_VOLUMES_VERSION):
                         params = {
