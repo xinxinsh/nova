@@ -304,7 +304,7 @@ flavor_ref = {
 
 
 force_host = {
-    'type': ['string', 'integer', 'null'], 'minLength': 1
+    'type': ['string', 'integer', 'null'], 'minLength': 0
 }
 
 metadata = {
