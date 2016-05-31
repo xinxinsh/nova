@@ -1639,10 +1639,22 @@ class API(base_api.NetworkAPI):
         # raise for now.
         pass
 
+    def _update_port_pci_address(self, port, port_req_body, migration):
+        """Update instance's port pci address replaced."""
+        if 'replace_pci_address' not in migration:
+            return
+        replace_pci_address = migration['replace_pci_address']
+        if replace_pci_address:
+            mac_address = port['mac_address']
+            if mac_address in replace_pci_address:
+                port_req_body['port']['binding:profile'] = port.get(
+                    'binding:profile', {})
+                port_req_body['port']['binding:profile']['pci_slot'] = \
+                    replace_pci_address.get(mac_address)
+
     def migrate_instance_finish(self, context, instance, migration):
         """Finish migrating the network of an instance."""
-        self._update_port_binding_for_instance(context, instance,
-                                               migration['dest_compute'])
+        self._update_port_binding_for_instance(context, instance, migration)
 
     def add_network_to_project(self, context, project_id, network_uuid=None):
         """Force add a network to the project."""
@@ -1933,7 +1945,7 @@ class API(base_api.NetworkAPI):
         """Cleanup network for specified instance on host."""
         pass
 
-    def _update_port_binding_for_instance(self, context, instance, host):
+    def _update_port_binding_for_instance(self, context, instance, migration):
         if not self._has_port_binding_extension(context, refresh_cache=True):
             return
         neutron = get_client(context, admin=True)
@@ -1941,13 +1953,15 @@ class API(base_api.NetworkAPI):
                        'tenant_id': instance.project_id}
         data = neutron.list_ports(**search_opts)
         ports = data['ports']
+        host = migration['dest_compute']
         for p in ports:
             # If the host hasn't changed, like in the case of resizing to the
             # same host, there is nothing to do.
             if p.get('binding:host_id') != host:
                 try:
-                    neutron.update_port(p['id'],
-                                        {'port': {'binding:host_id': host}})
+                    port_req_body = {'port': {'binding:host_id': host}}
+                    self._update_port_pci_address(p, port_req_body, migration)
+                    neutron.update_port(p['id'], port_req_body)
                 except Exception:
                     with excutils.save_and_reraise_exception():
                         LOG.exception(_LE("Unable to update host of port %s"),

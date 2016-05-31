@@ -4427,6 +4427,8 @@ class ComputeTestCase(BaseTestCase):
         self.mox.StubOutWithMock(self.compute.driver, 'finish_migration')
         self.mox.StubOutWithMock(self.compute,
                                  '_get_instance_block_device_info')
+        self.mox.StubOutWithMock(self.compute,
+                                 '_check_and_replace_pci_device')
         self.mox.StubOutWithMock(migration, 'save')
         self.mox.StubOutWithMock(instance, 'save')
 
@@ -4455,6 +4457,7 @@ class ComputeTestCase(BaseTestCase):
 
         network_api.setup_networks_on_host(self.context, instance,
                                            'fake-mini')
+        self.compute._check_and_replace_pci_device(self.context, instance)
         network_api.migrate_instance_finish(self.context,
                                             mox.IsA(objects.Instance),
                                             mox.IsA(dict))
@@ -5534,7 +5537,7 @@ class ComputeTestCase(BaseTestCase):
         self.mox.StubOutWithMock(self.compute.compute_rpcapi,
                                  'post_live_migration_at_destination')
         self.compute.compute_rpcapi.post_live_migration_at_destination(
-            c, instance, False, dest)
+            c, instance, False, dest, migrate_data)
 
         self.mox.StubOutWithMock(self.compute.network_api,
                                  'setup_networks_on_host')
@@ -5599,9 +5602,6 @@ class ComputeTestCase(BaseTestCase):
 
         self.mox.StubOutWithMock(self.compute.compute_rpcapi,
                                  'post_live_migration_at_destination')
-        self.compute.compute_rpcapi.post_live_migration_at_destination(
-            c, instance, False, dest)
-
         self.mox.StubOutWithMock(self.compute.network_api,
                                  'setup_networks_on_host')
         self.mox.StubOutWithMock(self.compute.instance_events,
@@ -5609,12 +5609,15 @@ class ComputeTestCase(BaseTestCase):
         self.compute.instance_events.clear_events_for_instance(
             mox.IgnoreArg())
 
-        # start test
-        self.mox.ReplayAll()
         migrate_data = objects.LibvirtLiveMigrateData(
             is_shared_instance_path=False,
             is_shared_block_storage=False,
             block_migration=False)
+        self.compute.compute_rpcapi.\
+            post_live_migration_at_destination(c, instance,
+                                               False, dest, migrate_data)
+        # start test
+        self.mox.ReplayAll()
         self.compute._post_live_migration(c, instance, dest,
                                           migrate_data=migrate_data)
         self.assertIn('cleanup', result)
@@ -5677,7 +5680,7 @@ class ComputeTestCase(BaseTestCase):
             migrate_instance_start.assert_has_calls([
                 mock.call(c, instance, migration)])
             post_live_migration_at_destination.assert_has_calls([
-                mock.call(c, instance, False, dest)])
+                mock.call(c, instance, False, dest, migrate_data)])
             post_live_migration_at_source.assert_has_calls(
                 [mock.call(c, instance, [])])
             clear_events.assert_called_once_with(instance)

@@ -317,7 +317,8 @@ class ComputeRpcAPITestCase(test.NoDBTestCase):
     def test_post_live_migration_at_destination(self):
         self._test_compute_api('post_live_migration_at_destination', 'cast',
                 instance=self.fake_instance_obj,
-                block_migration='block_migration', host='host', version='4.0')
+                block_migration='block_migration', host='host', version='4.0',
+                migrate_data=None)
 
     def test_pause_instance(self):
         self._test_compute_api('pause_instance', 'cast',

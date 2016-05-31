@@ -19,6 +19,7 @@ from nova.compute import power_state
 from nova.conductor.tasks import base
 from nova import exception
 from nova.i18n import _
+from nova import network
 from nova import objects
 from nova.scheduler import utils as scheduler_utils
 from nova import utils
@@ -51,8 +52,11 @@ class LiveMigrationTask(base.TaskBase):
         self.servicegroup_api = servicegroup_api
         self.scheduler_client = scheduler_client
         self.request_spec = request_spec
+        self.network_api = network.API()
 
     def _execute(self):
+        # aovid instance with direct port to live migrate
+        self._check_not_exist_direct_port(self.instance)
         self._check_instance_is_active()
         self._check_host_is_up(self.source)
 
@@ -228,3 +232,21 @@ class LiveMigrationTask(base.TaskBase):
                    % {'max_retries': retries,
                       'instance_uuid': self.instance.uuid})
             raise exception.MaxRetriesExceeded(reason=msg)
+
+    def _check_not_exist_direct_port(self, instance):
+        # prevent instance with direct port from live migrating
+        search_opts = {'device_id': instance['uuid']}
+        try:
+            list_ports = self.network_api.list_ports(self.context,
+                                                     **search_opts)
+            for port in list_ports['ports']:
+                if port['binding:vnic_type'] == 'direct':
+                    reason = _('instance %(instance_uuid)s includes direct '
+                               'port and direct port does not support for'
+                               ' live migrate')
+                    raise exception.MigrationPreCheckError(
+                        reason=reason % dict(instance_uuid=instance['uuid']))
+        except exception.NotFound:
+            pass
+        except Exception as ex:
+            raise ex

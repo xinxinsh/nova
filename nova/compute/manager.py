@@ -27,6 +27,7 @@ terminating it.
 
 import base64
 import contextlib
+import copy
 import functools
 import inspect
 import os
@@ -85,6 +86,7 @@ from nova.network import model as network_model
 from nova.network.security_group import openstack_driver
 from nova import objects
 from nova.objects import base as obj_base
+from nova.objects import compute_node as compute_obj
 from nova.objects import instance as obj_instance
 from nova.objects import migrate_data as migrate_data_obj
 from nova import paths
@@ -3977,6 +3979,38 @@ class ComputeManager(manager.Manager):
         instance.ephemeral_gb = instance_type.ephemeral_gb
         instance.flavor = instance_type
 
+    def _get_compute_node_by_instance(self, context, instance):
+        # acquire compute node by instance node
+        compute_nodes = compute_obj.ComputeNodeList.get_by_hypervisor(
+            context, instance.node)
+        if len(compute_nodes) > 0:
+            return compute_nodes[0]
+        return None
+
+    def _check_and_replace_pci_device(self, context, instance):
+        """Check whether migrateing instance's pci devices are avaliable,if not
+        replace some pci device to instance.
+        """
+        try:
+            network_info = self.network_api.get_instance_nw_info(context,
+                                                                 instance)
+            dest_compute_node = self._get_compute_node_by_instance(context,
+                                                                   instance)
+            if dest_compute_node is None:
+                return
+
+            dest_claimed_pci_address = list()
+            replace_address = {}
+            for pci_device in instance.pci_devices:
+                if pci_device.compute_node_id == dest_compute_node.id:
+                    dest_claimed_pci_address.append(pci_device.address)
+            if len(dest_claimed_pci_address) > 0:
+                replace_address = self._check_correct_pci_slot_vif(
+                    network_info, dest_claimed_pci_address)
+            return replace_address
+        except Exception as ex:
+            exception.MigrationError(message=ex.message)
+
     def _finish_resize(self, context, instance, migration, disk_info,
                        image_meta):
         resize_instance = False
@@ -4004,6 +4038,14 @@ class ComputeManager(manager.Manager):
                                                 migration['dest_compute'])
 
         migration_p = obj_base.obj_to_primitive(migration)
+
+        # NOTE(sl): replace migrating instance's pci devices which are not
+        # avaliable in dest host
+        replace_address = self._check_and_replace_pci_device(context,
+                                                             instance)
+        if replace_address:
+            migration_p['replace_pci_address'] = replace_address
+
         self.network_api.migrate_instance_finish(context,
                                                  instance,
                                                  migration_p)
@@ -5339,6 +5381,45 @@ class ComputeManager(manager.Manager):
         LOG.debug('source check data is %s', result)
         return result
 
+    def _get_free_sriov_pci_address(self):
+        """acquire the compute node's available  pci devices list for sriov"""
+        try:
+            resource_tracker = self._get_resource_tracker(self.host)
+            free_devices = resource_tracker.pci_tracker.pci_stats.\
+                get_free_devs()
+            available_address = []
+            for device in free_devices:
+                if device['dev_type'] == 'type-VF':
+                    available_address.append(device['address'])
+
+            LOG.debug('address of free pci device: %s', available_address)
+            return available_address
+        except Exception as ex:
+            LOG.error(ex.message)
+            return []
+
+    def _check_correct_pci_slot_vif(self, network_info, available_address):
+        """Replace instance's sriov ports which have already be used in
+        destination host.
+        """
+        replace_address = {}
+        temp_available_address = copy.deepcopy(available_address)
+
+        # aovid to assgin repeat pci device from available_address
+        for vif in network_info:
+            if vif['vnic_type'] == 'macvtap':
+                if vif['profile']['pci_slot'] in temp_available_address:
+                    temp_available_address.remove(vif['profile']['pci_slot'])
+
+        for vif in network_info:
+            if vif['vnic_type'] == 'macvtap':
+                if vif['profile']['pci_slot'] not in temp_available_address:
+                    temp_addr = temp_available_address.pop()
+                    replace_address[vif['address']] = temp_addr
+                    vif['profile']['pci_slot'] = temp_addr
+        LOG.debug('replace_address is %s', replace_address)
+        return replace_address
+
     @wrap_exception()
     @wrap_instance_event
     @wrap_instance_fault
@@ -5369,6 +5450,9 @@ class ComputeManager(manager.Manager):
                      context, instance, "live_migration.pre.start",
                      network_info=network_info)
 
+        available_address = self._get_free_sriov_pci_address()
+        replace_address = self._check_correct_pci_slot_vif(network_info,
+                                                           available_address)
         migrate_data = self.driver.pre_live_migration(context,
                                        instance,
                                        block_device_info,
@@ -5398,6 +5482,10 @@ class ComputeManager(manager.Manager):
             migrate_data = migrate_data.to_legacy_dict(
                 pre_migration_result=True)
             migrate_data = migrate_data['pre_live_migration_result']
+
+        if replace_address:
+            migrate_data['replace_pci_address'] = replace_address
+
         LOG.debug('pre_live_migration result data is %s', migrate_data)
         return migrate_data
 
@@ -5659,7 +5747,11 @@ class ComputeManager(manager.Manager):
         # Define domain at destination host, without doing it,
         # pause/suspend/terminate do not work.
         self.compute_rpcapi.post_live_migration_at_destination(ctxt,
-                instance, block_migration, dest)
+                                                               instance,
+                                                               block_migration,
+                                                               dest,
+                                                               migrate_data
+                                                               )
 
         do_cleanup, destroy_disks = self._live_migration_cleanup_flags(
                 migrate_data)
@@ -5714,7 +5806,8 @@ class ComputeManager(manager.Manager):
     @wrap_instance_event
     @wrap_instance_fault
     def post_live_migration_at_destination(self, context, instance,
-                                           block_migration):
+                                           block_migration,
+                                           migrate_data=None):
         """Post operations for live migration .
 
         :param context: security context
@@ -5733,6 +5826,10 @@ class ComputeManager(manager.Manager):
                                                          self.host)
         migration = {'source_compute': instance.host,
                      'dest_compute': self.host, }
+
+        if migrate_data:
+            migration.update(migrate_data)
+
         self.network_api.migrate_instance_finish(context,
                                                  instance,
                                                  migration)
