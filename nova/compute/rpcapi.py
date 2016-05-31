@@ -1037,6 +1037,14 @@ class ComputeAPI(object):
         cctxt.cast(ctxt, 'volume_snapshot_create', instance=instance,
                    volume_id=volume_id, create_info=create_info)
 
+    def volume_online_extend(self, ctxt, instance, volume_id,
+                             extend_info):
+        version = '4.0'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                version=version)
+        cctxt.cast(ctxt, 'volume_online_extend', instance=instance,
+                   volume_id=volume_id, extend_info=extend_info)
+
     def volume_snapshot_delete(self, ctxt, instance, volume_id, snapshot_id,
                                delete_info):
         version = '4.0'

@@ -3632,6 +3632,19 @@ class API(base.Base):
         return snapshot
 
     @wrap_check_policy
+    def volume_online_extend(self, context, volume_id, extend_info):
+        bdm = objects.BlockDeviceMapping.get_by_volume(
+                context, volume_id, expected_attrs=['instance'])
+        self.compute_rpcapi.volume_online_extend(context, bdm.instance,
+                volume_id, extend_info)
+        volume = {
+            'volume': {
+                'volumeId': volume_id
+            }
+        }
+        return volume
+
+    @wrap_check_policy
     def volume_snapshot_delete(self, context, volume_id, snapshot_id,
                                delete_info):
         bdm = objects.BlockDeviceMapping.get_by_volume(

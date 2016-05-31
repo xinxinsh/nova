@@ -2053,6 +2053,15 @@ class LibvirtDriver(driver.ComputeDriver):
             LOG.exception(_LE('Failed to send updated snapshot status '
                               'to volume service.'))
 
+    def _volume_update_status(self, context, volume_id, status):
+        try:
+            self._volume_api.update_extending_flag(context,
+                                                   volume_id,
+                                                   status)
+        except Exception:
+            LOG.exception(_LE('Failed to send updated volume extending '
+                              'status to volume service.'))
+
     def _volume_snapshot_create(self, context, instance, guest,
                                 volume_id, new_file):
         """Perform volume snapshot.
@@ -2243,6 +2252,41 @@ class LibvirtDriver(driver.ComputeDriver):
 
         timer = loopingcall.FixedIntervalLoopingCall(_wait_for_snapshot)
         timer.start(interval=0.5).wait()
+
+    def volume_online_extend(self, context, instance, mountpoint,
+                             volume_id, extend_info):
+        LOG.debug("volume_online_extend: extend_info: %(e_info)s",
+                  {'e_info': extend_info}, instance=instance)
+
+        try:
+            guest = self._host.get_guest(instance)
+        except exception.InstanceNotFound:
+            raise exception.InstanceNotFound(instance_id=instance.uuid)
+
+        if extend_info['type'] not in ['rbd', 'qcow2']:
+            raise exception.NovaException(_('Unknow tppe: %s') %
+                                          extend_info['type'])
+
+        resize_to = extend_info['new_size']
+
+        try:
+            disk_dev = mountpoint.rpartition("/")[2]
+            if not guest.get_disk(disk_dev):
+                raise exception.DiskNotFound(location=disk_dev)
+
+            dev = guest.get_block_device(disk_dev)
+            dev.resize(resize_to * units.Gi / units.Ki)
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.exception(_LE('Error occurred during '
+                                  'volume_online_extend, '
+                                  'sending error status to Cinder.'),
+                              instance=instance)
+                self._volume_update_status(
+                    context, volume_id, 'extending_compute_error')
+
+        self._volume_update_status(
+            context, volume_id, 'extending_compute_complete')
 
     @staticmethod
     def _rebase_with_qemu_img(guest, device, active_disk_object,

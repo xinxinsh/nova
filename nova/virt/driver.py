@@ -1494,6 +1494,10 @@ class ComputeDriver(object):
         """
         raise NotImplementedError()
 
+    def volume_online_extend(self, context, instance, mountpoint,
+                             volume_id, extend_info):
+        raise NotImplementedError()
+
     def volume_snapshot_delete(self, context, instance, volume_id,
                                snapshot_id, delete_info):
         """Deletes a snapshot of a volume attached to a specified instance.

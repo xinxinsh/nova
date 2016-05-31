@@ -3228,6 +3228,27 @@ class ComputeManager(manager.Manager):
 
     @messaging.expected_exceptions(NotImplementedError)
     @wrap_exception()
+    def volume_online_extend(self, context, instance, volume_id,
+                             extend_info):
+        """Online extend volume."""
+        context = context.elevated()
+
+        bdm = objects.BlockDeviceMapping.get_by_volume_and_instance(
+                context, volume_id, instance.uuid)
+        mountpoint = bdm['device_name']
+
+        LOG.info(_LI('Online extending volume: %s.'),
+                 volume_id, instance=instance)
+
+        try:
+            self.driver.volume_online_extend(context, instance, mountpoint,
+                                             volume_id, extend_info)
+        except Exception as error:
+            LOG.exception(_LE("Error extending: %s. "),
+                          error, instance=instance)
+
+    @messaging.expected_exceptions(NotImplementedError)
+    @wrap_exception()
     def volume_snapshot_delete(self, context, instance, volume_id,
                                snapshot_id, delete_info):
         self.driver.volume_snapshot_delete(context, instance, volume_id,
