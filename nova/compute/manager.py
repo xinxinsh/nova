@@ -7177,8 +7177,7 @@ class ComputeManager(manager.Manager):
         self.driver.instance_actions(context, instance, action)
 
     def _create_memory_file(self):
-        import os
-        snapshot_directory = '/var/lib/memory_snapshot'
+        snapshot_directory = '/home/memory_snapshot'
         if not os.path.isdir(snapshot_directory):
             utils.execute('mkdir', snapshot_directory,
                           run_as_root=True)
