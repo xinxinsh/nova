@@ -12,6 +12,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from nova.api.validation import parameter_types
+
 snapshots_create = {
     'type': 'object',
     'properties': {
@@ -36,6 +38,13 @@ snapshots_create = {
                         'id': {
                             'type': 'string', 'minLength': 1,
                         },
+                        'merge_target_file': {
+                            'type': ['string', 'null'],
+                        },
+                        'file_to_merge': {
+                            'type': ['string', 'null'],
+                        },
+                        'ext_snapshot': parameter_types.boolean
                     },
                     'required': ['snapshot_id', 'type', 'new_file'],
                     'additionalProperties': False,
