@@ -170,8 +170,7 @@ class ServerActionsControllerTestV21(test.TestCase):
                                '_action_reboot': 'reboot',
                                '_action_rebuild': 'rebuild'}
 
-        body_map = {'_action_resize': {'resize': {'flavorRef': '2',
-                    'force_host': None}},
+        body_map = {'_action_resize': {'resize': {'flavorRef': '2'}},
                     '_action_reboot': {'reboot': {'type': 'HARD'}},
                     '_action_rebuild': {'rebuild': {
                                 'imageRef': self.image_uuid,
@@ -657,8 +656,7 @@ class ServerActionsControllerTestV21(test.TestCase):
 
     def test_resize_server(self):
 
-        body = dict(resize=dict(flavorRef="http://localhost/3",
-            force_host=None))
+        body = dict(resize=dict(flavorRef="http://localhost/3"))
 
         self.resize_called = False
 
@@ -700,8 +698,7 @@ class ServerActionsControllerTestV21(test.TestCase):
                           self.req, FAKE_UUID, body=body)
 
     def test_resize_with_server_not_found(self):
-        body = dict(resize=dict(flavorRef="http://localhost/3",
-            force_host=None))
+        body = dict(resize=dict(flavorRef="http://localhost/3"))
 
         self.stubs.Set(compute_api.API, 'get', return_server_not_found)
 
@@ -710,8 +707,7 @@ class ServerActionsControllerTestV21(test.TestCase):
                           self.req, FAKE_UUID, body=body)
 
     def test_resize_with_image_exceptions(self):
-        body = dict(resize=dict(flavorRef="http://localhost/3",
-            force_host=None))
+        body = dict(resize=dict(flavorRef="http://localhost/3"))
         self.resize_called = 0
         image_id = 'fake_image_id'
 
@@ -754,8 +750,7 @@ class ServerActionsControllerTestV21(test.TestCase):
     @mock.patch('nova.compute.api.API.resize',
                 side_effect=exception.CannotResizeDisk(reason=''))
     def test_resize_raises_cannot_resize_disk(self, mock_resize):
-        body = dict(resize=dict(flavorRef="http://localhost/3",
-            force_host=None))
+        body = dict(resize=dict(flavorRef="http://localhost/3"))
         self.assertRaises(webob.exc.HTTPBadRequest,
                           self.controller._action_resize,
                           self.req, FAKE_UUID, body=body)
@@ -764,15 +759,13 @@ class ServerActionsControllerTestV21(test.TestCase):
                 side_effect=exception.FlavorNotFound(reason='',
                                                      flavor_id='fake_id'))
     def test_resize_raises_flavor_not_found(self, mock_resize):
-        body = dict(resize=dict(flavorRef="http://localhost/3",
-            force_host=None))
+        body = dict(resize=dict(flavorRef="http://localhost/3"))
         self.assertRaises(webob.exc.HTTPBadRequest,
                           self.controller._action_resize,
                           self.req, FAKE_UUID, body=body)
 
     def test_resize_with_too_many_instances(self):
-        body = dict(resize=dict(flavorRef="http://localhost/3",
-                                force_host=None))
+        body = dict(resize=dict(flavorRef="http://localhost/3"))
 
         def fake_resize(*args, **kwargs):
             raise exception.TooManyInstances(message="TooManyInstance")
@@ -784,8 +777,7 @@ class ServerActionsControllerTestV21(test.TestCase):
                           self.req, FAKE_UUID, body=body)
 
     def test_resize_raises_conflict_on_invalid_state(self):
-        body = dict(resize=dict(flavorRef="http://localhost/3",
-            force_host=None))
+        body = dict(resize=dict(flavorRef="http://localhost/3"))
 
         def fake_resize(*args, **kwargs):
             raise exception.InstanceInvalidState(attr='fake_attr',
@@ -801,8 +793,7 @@ class ServerActionsControllerTestV21(test.TestCase):
     @mock.patch('nova.compute.api.API.resize',
                 side_effect=exception.NoValidHost(reason=''))
     def test_resize_raises_no_valid_host(self, mock_resize):
-        body = dict(resize=dict(flavorRef="http://localhost/3",
-            force_host=None))
+        body = dict(resize=dict(flavorRef="http://localhost/3"))
 
         self.assertRaises(webob.exc.HTTPBadRequest,
                           self.controller._action_resize,
@@ -813,8 +804,7 @@ class ServerActionsControllerTestV21(test.TestCase):
         mock_resize.side_effect = exception.AutoDiskConfigDisabledByImage(
             image='dummy')
 
-        body = dict(resize=dict(flavorRef="http://localhost/3",
-            force_host=None))
+        body = dict(resize=dict(flavorRef="http://localhost/3"))
 
         self.assertRaises(webob.exc.HTTPBadRequest,
                           self.controller._action_resize,
