@@ -573,8 +573,8 @@ class API(object):
     def update_extending_flag(self, context, volume_id, status):
         client = cinderclient(context)
 
-        client.volume.update_extending_flag(volume_id,
-                                            {'compute_volume_status': status})
+        client.volumes.update_extending_flag(volume_id,
+                                             {'compute_volume_status': status})
 
     def get_all_backups(self, context, search_opts=None):
         items = cinderclient(context).backups.list(
