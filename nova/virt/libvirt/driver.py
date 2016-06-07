@@ -61,6 +61,7 @@ from six.moves import range
 
 from nova import block_device
 from nova.compute import arch
+from nova.compute import cpumodel
 from nova.compute import hv_type
 from nova.compute import power_state
 from nova.compute import task_states
@@ -261,6 +262,11 @@ libvirt_opts = [
                help='Set to a named libvirt CPU model (see names listed '
                     'in /usr/share/libvirt/cpu_map.xml). Only has effect if '
                     'cpu_mode="custom" and virt_type="kvm|qemu"'),
+    cfg.ListOpt('cpu_featureset',
+                default=[],
+                help='The cpu features add to libvirt CPU(Must be supported'
+                     'in host, see /proc/cpuinfo). Only has effect if'
+                     'cpu_mode="custom" and virt_type="kvm|qemu"'),
     cfg.StrOpt('snapshots_directory',
                default='$instances_path/snapshots',
                help='Location where libvirt driver will store snapshots '
@@ -3702,6 +3708,15 @@ class LibvirtDriver(driver.ComputeDriver):
     def _get_guest_cpu_model_config(self):
         mode = CONF.libvirt.cpu_mode
         model = CONF.libvirt.cpu_model
+        featureset = CONF.libvirt.cpu_featureset
+        features = set()
+
+        for ft in featureset:
+            # TODO(michael): need verify if host cpu supports this feature
+            f = vconfig.LibvirtConfigGuestCPUFeature()
+            f.name = ft
+            f.policy = cpumodel.POLICY_REQUIRE
+            features.add(f)
 
         if (CONF.libvirt.virt_type == "kvm" or
             CONF.libvirt.virt_type == "qemu"):
@@ -3735,6 +3750,7 @@ class LibvirtDriver(driver.ComputeDriver):
         cpu = vconfig.LibvirtConfigGuestCPU()
         cpu.mode = mode
         cpu.model = model
+        cpu.features = features
 
         return cpu
 
