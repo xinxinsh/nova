@@ -1233,6 +1233,9 @@ class ServersController(wsgi.Controller):
 
         instance = common.get_instance(self.compute_api, context, id)
 
+        if instance.vm_state == vm_states.PAUSED:
+            return webob.Response(status_int=202)
+
         try:
             self.compute_api.quiesce(context, instance)
         except exception.NovaException as e:
@@ -1247,6 +1250,9 @@ class ServersController(wsgi.Controller):
         context = req.environ["nova.context"]
 
         instance = common.get_instance(self.compute_api, context, id)
+
+        if instance.vm_state == vm_states.PAUSED:
+            return webob.Response(status_int=202)
 
         try:
             self.compute_api.unquiesce(context, instance)

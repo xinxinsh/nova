@@ -7104,8 +7104,10 @@ class ComputeManager(manager.Manager):
             instance.save()
 
             context = context.elevated()
-            image_service = glance.get_default_image_service()
-            image_meta = image_service.show(context, instance.image_ref)
+            image_meta = {}
+            if instance.image_ref:
+                image_service = glance.get_default_image_service()
+                image_meta = image_service.show(context, instance.image_ref)
 
             try:
                 self.driver.quiesce(context, instance, image_meta)
@@ -7199,8 +7201,11 @@ class ComputeManager(manager.Manager):
                                   error, instance=instance)
 
             try:
-                image_service = glance.get_default_image_service()
-                image_meta = image_service.show(context, instance.image_ref)
+                image_meta = {}
+                if instance.image_ref:
+                    image_service = glance.get_default_image_service()
+                    image_meta = image_service.show(context,
+                                                    instance.image_ref)
                 self.driver.unquiesce(context, instance, image_meta)
                 instance.vm_state = vm_states.ACTIVE
                 instance.task_state = None
