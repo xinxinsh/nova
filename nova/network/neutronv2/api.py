@@ -1953,7 +1953,10 @@ class API(base_api.NetworkAPI):
                        'tenant_id': instance.project_id}
         data = neutron.list_ports(**search_opts)
         ports = data['ports']
-        host = migration['dest_compute']
+        if isinstance(migration, dict):
+            host = migration.get('dest_compute', None)
+        else:
+            host = migration
         for p in ports:
             # If the host hasn't changed, like in the case of resizing to the
             # same host, there is nothing to do.
