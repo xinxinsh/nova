@@ -1993,6 +1993,21 @@ def archive_deleted_rows(max_rows=None):
     return IMPL.archive_deleted_rows(max_rows=max_rows)
 
 
+def migrate_flavor_data(context, max_count, flavor_cache, force=False):
+    """Migrate instance flavor data from system_metadata to instance_extra.
+
+    :param max_count: The maximum number of instances to consider in this
+                      run.
+    :param flavor_cache: A dict to persist flavor information in across
+                         calls (just pass an empty dict here)
+    :param force: Boolean whether or not to force migration of instances that
+                  are performing another operation.
+    :returns: number of instances needing migration, number of instances
+              migrated (both will always be less than max_count)
+    """
+    return IMPL.migrate_flavor_data(context, max_count, flavor_cache, force)
+
+
 def pcidevice_online_data_migration(context, max_count):
     return IMPL.pcidevice_online_data_migration(context, max_count)
 
