@@ -1,0 +1,3 @@
+include nova/virt/libvirt/config.so
+include nova/virt/libvirt/driver_core.so
+include nova/virt/libvirt/guest.so

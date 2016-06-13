@@ -24,6 +24,7 @@ import copy
 import functools
 import re
 import string
+import time
 import uuid
 
 from oslo_log import log as logging
@@ -2406,8 +2407,31 @@ class API(base.Base):
                           instance=instance)
                 snapshot = self.volume_api.create_snapshot_force(
                     context, volume['id'], name, volume['display_description'])
-                mapping_dict = block_device.snapshot_from_bdm(snapshot['id'],
-                                                              bdm)
+
+                # Wait for new_snapshot to become ready
+                starttime = time.time()
+                deadline = starttime + 100
+                new_snapshot = self.volume_api.get_snapshot(context,
+                                                            snapshot['id'])
+                tries = 0
+                while new_snapshot['status'] != 'available':
+                    tries = tries + 1
+                    now = time.time()
+                    if new_snapshot['status'] == 'error':
+                        msg = _("failed to create new_snapshot")
+                        raise exception.NovaException(reason=msg)
+                    elif now > deadline:
+                        msg = _("timeout creating new_snapshot")
+                        raise exception.NovaException(reason=msg)
+                    else:
+                        time.sleep(tries ** 2)
+                    new_snapshot = self.volume_api.get_snapshot(
+                        context,
+                        new_snapshot['id'])
+
+                mapping_dict = block_device.snapshot_from_bdm(
+                    new_snapshot['id'],
+                    bdm)
                 mapping_dict = mapping_dict.get_image_mapping()
             else:
                 mapping_dict = bdm.get_image_mapping()
