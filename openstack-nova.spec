@@ -2,6 +2,8 @@
 %global with_trans %{!?_without_trans:1}%{?_without_trans:0}
 
 %{!?upstream_version: %global upstream_version %{version}%{?milestone}}
+%define _binaries_in_noarch_packages_terminate_build 0
+%define debug_package %{nil}
 
 Name:             openstack-nova
 # Liberty semver reset
