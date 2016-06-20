@@ -7080,6 +7080,16 @@ class ComputeManager(manager.Manager):
                                     instance=instance)
                     break
 
+    def _set_instance_error_state(self, context, instance):
+        instance_uuid = instance['uuid']
+        try:
+            self._instance_update(context, instance_uuid,
+                                  vm_state=vm_states.ERROR)
+        except exception.InstanceNotFound:
+            LOG.debug('Instance has been destroyed from under us while '
+                      'trying to set it to ERROR',
+                      instance_uuid=instance_uuid)
+
     @messaging.expected_exceptions(exception.InstanceQuiesceNotSupported,
                                    exception.QemuGuestAgentNotEnabled,
                                    exception.NovaException,
