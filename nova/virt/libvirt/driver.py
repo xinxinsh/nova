@@ -1545,6 +1545,14 @@ class LibvirtDriver(driver.ComputeDriver):
             else:
                 raise
 
+        guest = self._host.get_guest(instance)
+        conf = guest.get_disk(disk_dev)
+        if conf is not None:
+            msg = (_("failed to detach volume, %(volume_id)s is busy") %
+                   {'volume_id': connection_info['serial']})
+
+            raise exception.DeviceDetachFailed(device=disk_dev, reason=msg)
+
         self._disconnect_volume(connection_info, disk_dev)
 
     def attach_interface(self, instance, image_meta, vif):

@@ -544,7 +544,7 @@ class ComputeAPI(object):
             extra.pop('attachment_id')
         cctxt = self.client.prepare(server=_compute_host(None, instance),
                 version=version)
-        cctxt.cast(ctxt, 'detach_volume',
+        cctxt.call(ctxt, 'detach_volume',
                    instance=instance, volume_id=volume_id, **extra)
 
     def reload_qos_specs(self, ctxt, instance, volume_id):

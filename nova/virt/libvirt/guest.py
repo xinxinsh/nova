@@ -331,15 +331,16 @@ class Guest(object):
                                     max_sleep_time=max_sleep_time,
                                     exceptions=exception.DeviceDetachFailed)
         def _do_wait_and_retry_detach():
-            config = get_device_conf_func(device)
-            if config is not None:
-                # Device is already detached from persistent domain
-                # and only transient domain needs update
-                self.detach_device(config, persistent=False, live=live)
-                # Raise error since the device still existed on the guest
-                reason = _("Unable to detach from guest transient domain.")
-                raise exception.DeviceDetachFailed(device=device,
-                                                   reason=reason)
+            pass
+            # config = get_device_conf_func(device)
+            # if config is not None:
+            #     # Device is already detached from persistent domain
+            #     # and only transient domain needs update
+            #     self.detach_device(config, persistent=False, live=live)
+            #     # Raise error since the device still existed on the guest
+            #     reason = _("Unable to detach from guest transient domain.")
+            #     raise exception.DeviceDetachFailed(device=device,
+            #                                        reason=reason)
 
         return _do_wait_and_retry_detach
 
