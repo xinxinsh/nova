@@ -1525,6 +1525,14 @@ class LibvirtDriver(driver.ComputeDriver):
                 encryptor.detach_volume(**encryption)
 
             wait_for_detach()
+
+            guest = self._host.get_guest(instance)
+            conf = guest.get_disk(disk_dev)
+            if conf is not None:
+                msg = (_("failed to detach volume, %(volume_id)s is busy") %
+                       {'volume_id': connection_info['serial']})
+                raise exception.DeviceDetachFailed(device=disk_dev, reason=msg)
+
         except exception.InstanceNotFound:
             # NOTE(zhaoqin): If the instance does not exist, _lookup_by_name()
             #                will throw InstanceNotFound exception. Need to
@@ -1544,14 +1552,6 @@ class LibvirtDriver(driver.ComputeDriver):
                          instance=instance)
             else:
                 raise
-
-        guest = self._host.get_guest(instance)
-        conf = guest.get_disk(disk_dev)
-        if conf is not None:
-            msg = (_("failed to detach volume, %(volume_id)s is busy") %
-                   {'volume_id': connection_info['serial']})
-
-            raise exception.DeviceDetachFailed(device=disk_dev, reason=msg)
 
         self._disconnect_volume(connection_info, disk_dev)
 
