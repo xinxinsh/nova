@@ -5827,8 +5827,9 @@ class ComputeManager(manager.Manager):
         migration = {'source_compute': instance.host,
                      'dest_compute': self.host, }
 
-        if migrate_data:
-            migration.update(migrate_data)
+        if migrate_data and 'replace_pci_address' in migrate_data:
+            migration['replace_pci_address'] =\
+                migrate_data['replace_pci_address']
 
         self.network_api.migrate_instance_finish(context,
                                                  instance,
