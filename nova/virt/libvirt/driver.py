@@ -958,6 +958,51 @@ class LibvirtDriver(driver.ComputeDriver):
                   instance=instance)
         disk.teardown_container(container_dir, rootfs_dev)
 
+    def _clean_hugepage_2M(self, xml=None, instance=None):
+        meminfo_file = '/proc/meminfo'
+        f = None
+        hugepages_total = 0
+        hugemem = 0
+        wantsmempages = False
+
+        LOG.info(_LI("_clean_hugepage"))
+        if instance is None or instance.numa_topology is None:
+            LOG.info(_LI("instance.numa_topology is none"))
+            return
+
+        for cell in instance.numa_topology.cells:
+            if cell.pagesize:
+                wantsmempages = True
+                break
+        if not wantsmempages:
+            return
+        request_mem = instance.flavor.memory_mb
+        try:
+            f = open(meminfo_file)
+            line = f.readline()
+            while line:
+                if 'HugePages_Total:' == line.split()[0]:
+                    hugepages_total = int(line.split()[1])
+                    hugemem = hugepages_total * 2 - request_mem
+                    if hugemem < 0:
+                        LOG.warning(_LW('hugemem %d<0'), hugemem)
+                        hugemem = 0
+                    import os
+                    command = 'sudo nova-rootwrap '
+                    command = command + '/etc/nova/rootwrap.conf '
+                    command = command + 'sysctl vm.nr_hugepages='
+                    command = command + str(hugemem / 2)
+                    os.system(command)
+                    break
+                line = f.readline()
+
+        except IOError:
+            LOG.warning(_LW('open or read file error1:/proc/meminfo'))
+        finally:
+            if f is not None:
+                f.close
+        LOG.warning(_LW('hugemem %d'), hugemem)
+
     def _destroy(self, instance, attempt=1):
         try:
             guest = self._host.get_guest(instance)
@@ -969,9 +1014,9 @@ class LibvirtDriver(driver.ComputeDriver):
         old_domid = -1
         if guest is not None:
             try:
+                self._clean_hugepage_2M(instance=instance)
                 old_domid = guest.id
                 guest.poweroff()
-
             except libvirt.libvirtError as e:
                 is_okay = False
                 errcode = e.get_error_code()
@@ -5210,6 +5255,63 @@ class LibvirtDriver(driver.ComputeDriver):
         return [('network-vif-plugged', vif['id'])
                 for vif in network_info if vif.get('active', True) is False]
 
+    def _prepare_hugepage_2M(self, xml=None, instance=None):
+        meminfo_file = '/proc/meminfo'
+        f = None
+        mem_available = 0
+        hugepages_total = 0
+        hugepages_free = 0
+        wantsmempages = False
+        if xml is None or instance is None:
+            return
+        if instance.numa_topology:
+            for cell in instance.numa_topology.cells:
+                if cell.pagesize:
+                    wantsmempages = True
+                    break
+        if not wantsmempages:
+            return
+        LOG.info(_LI('will config hugepage...'))
+        request_mem = instance.flavor.memory_mb
+        try:
+            f = open(meminfo_file)
+            line = f.readline()
+            while line:
+                if 'MemAvailable:' == line.split()[0]:
+                    mem_available = int(line.split()[1])
+
+                if 'HugePages_Total:' == line.split()[0]:
+                    hugepages_total = int(line.split()[1])
+
+                if 'HugePages_Free:' == line.split()[0]:
+                    hugepages_free = int(line.split()[1])
+                    if hugepages_free * 2 < request_mem:
+                        hugemem = request_mem - hugepages_free * 2
+                        if (hugemem * 1048) > mem_available:
+                            LOG.warning(_LW('mem is not enough '
+                                            '%(request)s>%(mem_free)s'),
+                                        {'request': hugemem * 1024,
+                                         'mem_free': mem_available})
+                            break
+                        import os
+                        command = 'sudo nova-rootwrap '
+                        command = command + '/etc/nova/rootwrap.conf '
+                        command = command + 'sysctl vm.nr_hugepages='
+                        command = command + str(hugemem / 2 + hugepages_total)
+                        os.system(command)
+                    break
+
+                line = f.readline()
+        except IOError:
+            LOG.warning(_LW('open or read file error:/proc/meminfo'))
+        finally:
+            if f is not None:
+                f.close
+        LOG.info(_LI('request:%(re)s available:%(avail)s '
+                     'h_total:%(ht)s,h_free:%(hf)s'),
+                 {'re': request_mem, 'avail': mem_available,
+                  'ht': hugepages_total, 'hf': hugepages_free})
+
     def _create_domain_and_network(self, context, xml, instance, network_info,
                                    disk_info, block_device_info=None,
                                    power_on=True, reboot=False,
@@ -5240,7 +5342,7 @@ class LibvirtDriver(driver.ComputeDriver):
             events = self._get_neutron_events(network_info)
         else:
             events = []
-
+        self._prepare_hugepage_2M(xml=xml, instance=instance)
         pause = bool(events)
         guest = None
         try:

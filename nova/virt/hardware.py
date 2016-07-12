@@ -875,7 +875,14 @@ def _numa_fit_instance_cell(host_cell, instance_cell, limit_cell=None):
         pagesize = _numa_cell_supports_pagesize_request(
             host_cell, instance_cell)
         if not pagesize:
-            return
+            if 2048 != instance_cell.pagesize:
+                return
+            else:
+                # when pagesize is 2048,
+                # _prepare_hugepage() can config hugepage for vm
+                from nova.i18n import _LI
+                LOG.info(_LI('set pagesize 2048 by default'))
+                pagesize = 2048
 
     instance_cell.id = host_cell.id
     instance_cell.pagesize = pagesize
