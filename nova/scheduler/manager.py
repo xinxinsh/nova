@@ -88,7 +88,7 @@ class SchedulerManager(manager.Manager):
     @messaging.expected_exceptions(exception.NoValidHost)
     def select_destinations(self, ctxt,
                             request_spec=None, filter_properties=None,
-                            spec_obj=_sentinel):
+                            spec_obj=_sentinel, hostname=None):
         """Returns destinations(s) best suited for this RequestSpec.
 
         The result should be a list of dicts with 'host', 'nodename' and
@@ -101,7 +101,7 @@ class SchedulerManager(manager.Manager):
             spec_obj = objects.RequestSpec.from_primitives(ctxt,
                                                            request_spec,
                                                            filter_properties)
-        dests = self.driver.select_destinations(ctxt, spec_obj)
+        dests = self.driver.select_destinations(ctxt, spec_obj, hostname)
         return jsonutils.to_primitive(dests)
 
     def update_aggregates(self, ctxt, aggregates):
