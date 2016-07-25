@@ -17,13 +17,20 @@
 
 
 import base64
+
+import eventlet
+from eventlet import GreenPool
+eventlet.monkey_patch()
+
 from nova.api.openstack import common
 from nova.api.openstack import extensions
 from nova.api.openstack import wsgi
 from nova import compute
 from nova import exception
 from nova.i18n import _
+from nova import servicegroup
 from oslo_log import log as logging
+import six
 import webob
 from webob import exc
 
@@ -141,6 +148,57 @@ class QgaController(wsgi.Controller):
             return None
 
 
+class GetuptimeController(wsgi.Controller):
+    def __init__(self, *args, **kwargs):
+        super(GetuptimeController, self).__init__(*args, **kwargs)
+        self.compute_api = compute.API()
+        self.host_api = compute.HostAPI()
+        self.servicegroup_api = servicegroup.API()
+        self.pool = GreenPool(10000)
+
+    def create(self, req, body):
+        context = req.environ['nova.context']
+        authorize(context)
+
+        datas = dict()
+        filters = {'disabled': False, 'binary': 'nova-compute'}
+        services = self.host_api.service_get_all(context, filters)
+        for service in services:
+            if self.servicegroup_api.service_is_up(service):
+                datas[service['host']] = []
+
+        try:
+            qga_getuptime = body['qgaGetuptime']
+            servers = qga_getuptime['servers']
+        except Exception as e:
+            raise exc.HTTPBadRequest(explanation=e)
+
+        for s in servers:
+            instance = common.get_instance(self.compute_api, context,
+                                           s['server_id'])
+            if instance.host in datas:
+                datas[instance.host].append(s)
+
+        rets = []
+        try:
+            for host, servers_list in six.iteritems(datas):
+                if len(datas[host]) != 0:
+                    ret = self.pool.spawn(self.compute_api.qga_getuptime,
+                                          *[context, host, servers_list])
+                    rets.append(ret)
+        except Exception:
+            msg = _("qga_getuptime action failed")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+        result = []
+        for ret in rets:
+            result.extend(ret.wait())
+
+        self.pool.waitall()
+
+        return {"qgaGetuptime": result}
+
+
 class Qga(extensions.V21APIExtensionBase):
     """Manage qga."""
 
@@ -154,4 +212,6 @@ class Qga(extensions.V21APIExtensionBase):
         return [extension]
 
     def get_resources(self):
-        return []
+        resources = extensions.ResourceExtension('os-qga_getuptime',
+                                                 GetuptimeController())
+        return [resources]

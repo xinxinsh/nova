@@ -3779,6 +3779,11 @@ class API(base.Base):
         return self.compute_rpcapi.get_qga_is_live(context, instance)
 
     @wrap_check_policy
+    def qga_getuptime(self, context, host, servers_list):
+        return self.compute_rpcapi.qga_getuptime(
+            context, host, servers_list)
+
+    @wrap_check_policy
     @check_instance_lock
     @check_instance_state(vm_state=[vm_states.STOPPED])
     def setup_config_driver(self, context, instance, files):

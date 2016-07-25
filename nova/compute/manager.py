@@ -7272,6 +7272,10 @@ class ComputeManager(manager.Manager):
     def get_qga_is_live(self, context, instance):
         return self.driver.get_qga_is_live(instance)
 
+    @wrap_exception()
+    def qga_getuptime(self, context, servers_list):
+        return self.driver.qga_getuptime(servers_list)
+
     @object_compat
     @wrap_exception()
     @wrap_instance_fault

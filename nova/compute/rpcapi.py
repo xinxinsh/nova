@@ -1180,6 +1180,11 @@ class ComputeAPI(object):
                 version=version)
         return cctxt.call(ctxt, 'get_qga_is_live', instance=instance)
 
+    def qga_getuptime(self, ctxt, host, servers_list):
+        version = '4.6'
+        cctxt = self.client.prepare(server=host, version=version)
+        return cctxt.call(ctxt, 'qga_getuptime', servers_list=servers_list)
+
     def setup_config_driver(self, ctxt, instance, files):
         version = '4.6'
         cctxt = self.client.prepare(server=_compute_host(None, instance),
