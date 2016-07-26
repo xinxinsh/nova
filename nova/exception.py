@@ -2127,6 +2127,10 @@ class QgaExecuteFailure(NovaException):
                 "%(method)s, error: %(error)s")
 
 
+class QgaGetuptimeFailure(NovaException):
+    msg_fmt = _("Qga getuptime fail, method: %(method)s, error: %(error)s")
+
+
 class SubnetNotFound(NotFound):
     msg_fmt = _("Subnet %(subnet_id)s could not be found.")
 

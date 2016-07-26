@@ -8176,6 +8176,9 @@ class LibvirtDriver(driver.ComputeDriver):
     def get_qga_is_live(self, instance):
         return self._core.get_qga_is_live(instance)
 
+    def qga_getuptime(self, servers_list):
+        return self._core.qga_getuptime(servers_list)
+
     def setup_config_driver(self, instance, files):
         return self._core.setup_config_driver(instance, files)
 

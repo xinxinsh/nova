@@ -751,6 +751,39 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
             return returnval
         return body
 
+    def qga_getuptime(self, servers_list):
+        message = dict()
+        message['execute'] = 'guest-terminal-cmd'
+        message['arguments'] = {}
+
+        post_data = dict()
+        for server in servers_list:
+            message['arguments']['id'] = str(uuid.uuid4())
+            message['arguments']['cmd'] = server['cmd']
+            msg_json = [jsonutils.dumps(message)]
+            post_data[server['server_id']] = msg_json
+
+        returnval = dict(state='qga_proxy_downtime')
+        try:
+            uri = 'http://%s:%s' % (CONF.qga_proxy.qga_proxy_host,
+                                    CONF.qga_proxy.qga_proxy_port)
+            headers = {'TIMEOUT': 30, 'Content-Type': 'application/json'}
+
+            recv = utils.http_post(uri, jsonutils.dumps(post_data), headers)
+            body = recv.read().strip()
+            if recv.code != 200:
+                raise Exception("Send to qga proxf failed: %s" % body)
+        except Exception as e:
+            returnval['msg'] = e
+            return returnval
+
+        try:
+            r = jsonutils.loads(body)
+            return r
+        except Exception:
+            raise exception.QgaGetuptimeFailure(error=body,
+                                                method=message['execute'])
+
     @staticmethod
     def _get_disk_config_path(instance, suffix=''):
         return os.path.join(libvirt_utils.get_instance_path(instance),

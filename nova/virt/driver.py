@@ -1631,6 +1631,9 @@ class ComputeDriver(object):
     def get_qga_is_live(self, instance):
         raise NotImplementedError()
 
+    def qga_getuptime(self, servers_list):
+        raise NotImplementedError()
+
     def setup_config_driver(self, instance, files):
         raise NotImplementedError()
 
