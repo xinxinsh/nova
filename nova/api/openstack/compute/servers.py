@@ -1279,6 +1279,30 @@ def remove_invalid_options(context, search_options, allowed_search_options):
             search_options.pop(opt, None)
 
 
+class GetServersInfoController(wsgi.Controller):
+    def __init__(self, *args, **kwargs):
+        super(GetServersInfoController, self).__init__(*args, **kwargs)
+        self.compute_api = compute.API()
+
+    def create(self, req, body):
+        context = req.environ['nova.context']
+
+        try:
+            get_servers_info = body['getServersInfo']
+            servers = get_servers_info['servers']
+        except Exception as e:
+            raise exc.HTTPBadRequest(explanation=e)
+
+        servers_info = []
+        for s in servers:
+            instance = common.get_instance(self.compute_api, context,
+                                           s['server_id'])
+
+            servers_info.append(instance)
+
+        return {"servers_info": servers_info}
+
+
 class Servers(extensions.V21APIExtensionBase):
     """Servers."""
 
@@ -1295,6 +1319,10 @@ class Servers(extensions.V21APIExtensionBase):
                 ServersController(extension_info=self.extension_info),
                 member_name='server', collection_actions=collection_actions,
                 member_actions=member_actions)]
+
+        res = extensions.ResourceExtension('os-get_servers_info',
+                                           GetServersInfoController())
+        resources.append(res)
 
         return resources
 
