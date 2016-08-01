@@ -145,10 +145,16 @@ class LibvirtGenericVIFDriver(object):
         """
         driver = None
         vhost_queues = None
+        flavor_vif_mq = False
+
+        if (flavor and 'extra_specs' in flavor and
+            'hw:vif_multiqueue_enabled' in flavor['extra_specs']):
+            flavor_vif_mq = flavor['extra_specs']['hw:vif_multiqueue_enabled']
+
         if not isinstance(image_meta, objects.ImageMeta):
             image_meta = objects.ImageMeta.from_dict(image_meta)
         img_props = image_meta.properties
-        if img_props.get('hw_vif_multiqueue_enabled'):
+        if img_props.get('hw_vif_multiqueue_enabled') or flavor_vif_mq:
             driver = 'vhost'
             vhost_queues = flavor.vcpus
 
