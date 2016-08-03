@@ -108,7 +108,7 @@ class SchedulerAPI(object):
         self.client = rpc.get_client(target, version_cap=version_cap,
                                      serializer=serializer)
 
-    def select_destinations(self, ctxt, spec_obj):
+    def select_destinations(self, ctxt, spec_obj, hostname=None):
         version = '4.3'
         msg_args = {'spec_obj': spec_obj}
         if not self.client.can_send_version(version):
@@ -117,6 +117,7 @@ class SchedulerAPI(object):
             msg_args['filter_properties'
                      ] = spec_obj.to_legacy_filter_properties_dict()
             version = '4.0'
+        msg_args.update({'hostname': hostname})
         cctxt = self.client.prepare(version=version)
         return cctxt.call(ctxt, 'select_destinations', **msg_args)
 

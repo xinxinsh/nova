@@ -43,14 +43,14 @@ class FilterScheduler(driver.Scheduler):
         self.options = scheduler_options.SchedulerOptions()
         self.notifier = rpc.get_notifier('scheduler')
 
-    def select_destinations(self, context, spec_obj):
+    def select_destinations(self, context, spec_obj, hostname=None):
         """Selects a filtered set of hosts and nodes."""
         self.notifier.info(
             context, 'scheduler.select_destinations.start',
             dict(request_spec=spec_obj.to_legacy_request_spec_dict()))
 
         num_instances = spec_obj.num_instances
-        selected_hosts = self._schedule(context, spec_obj)
+        selected_hosts = self._schedule(context, spec_obj, hostname)
 
         # Couldn't fulfill the request_spec
         if len(selected_hosts) < num_instances:
@@ -85,7 +85,7 @@ class FilterScheduler(driver.Scheduler):
         """Fetch options dictionary. Broken out for testing."""
         return self.options.get_configuration()
 
-    def _schedule(self, context, spec_obj):
+    def _schedule(self, context, spec_obj, hostname=None):
         """Returns a list of hosts that meet the required specs,
         ordered by their fitness.
         """
@@ -124,9 +124,21 @@ class FilterScheduler(driver.Scheduler):
 
             scheduler_host_subset_size = max(1,
                                              CONF.scheduler_host_subset_size)
-            if scheduler_host_subset_size < len(weighed_hosts):
-                weighed_hosts = weighed_hosts[0:scheduler_host_subset_size]
-            chosen_host = random.choice(weighed_hosts)
+
+            if hostname is not None:
+                local_host = [host for host in weighed_hosts if
+                              host.obj.host == hostname]
+                if local_host:
+                    chosen_host = local_host[0]
+                else:
+                    if scheduler_host_subset_size < len(weighed_hosts):
+                        weighed_hosts =\
+                        weighed_hosts[0:scheduler_host_subset_size]
+                    chosen_host = random.choice(weighed_hosts)
+            else:
+                if scheduler_host_subset_size < len(weighed_hosts):
+                    weighed_hosts = weighed_hosts[0:scheduler_host_subset_size]
+                chosen_host = random.choice(weighed_hosts)
 
             LOG.debug("Selected host: %(host)s", {'host': chosen_host})
             selected_hosts.append(chosen_host)

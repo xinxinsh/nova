@@ -45,6 +45,14 @@ from nova import utils
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
 
+filter_scheduler_opts = [
+    cfg.BoolOpt('conductor_force_resize_to_same_host_first',
+                default=True,
+                help='force resize to same host first')
+]
+
+CONF.register_opts(filter_scheduler_opts)
+
 
 class ConductorManager(manager.Manager):
     """Mission: Conduct things.
@@ -353,11 +361,17 @@ class ComputeTaskManager(base.Base):
     def _build_cold_migrate_task(self, context, instance, flavor,
                                  filter_properties, request_spec, reservations,
                                  clean_shutdown):
+        same_host_flag = False
+
+        if CONF.conductor_force_resize_to_same_host_first:
+            same_host_flag = True
+
         return migrate.MigrationTask(context, instance, flavor,
                                      filter_properties, request_spec,
                                      reservations, clean_shutdown,
                                      self.compute_rpcapi,
-                                     self.scheduler_client)
+                                     self.scheduler_client,
+                                     same_host_flag)
 
     def build_instances(self, context, instances, image, filter_properties,
             admin_password, injected_files, requested_networks,

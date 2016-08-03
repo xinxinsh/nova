@@ -22,14 +22,16 @@ class SchedulerQueryClient(object):
     def __init__(self):
         self.scheduler_rpcapi = scheduler_rpcapi.SchedulerAPI()
 
-    def select_destinations(self, context, spec_obj):
+    def select_destinations(self, context, spec_obj, hostname=None):
         """Returns destinations(s) best suited for this request_spec and
         filter_properties.
 
         The result should be a list of dicts with 'host', 'nodename' and
         'limits' as keys.
         """
-        return self.scheduler_rpcapi.select_destinations(context, spec_obj)
+        return self.scheduler_rpcapi.select_destinations(context,
+                                                         spec_obj,
+                                                         hostname)
 
     def update_aggregates(self, context, aggregates):
         """Updates HostManager internal aggregates information.

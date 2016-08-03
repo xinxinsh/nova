@@ -18,7 +18,7 @@ from nova.scheduler import utils as scheduler_utils
 class MigrationTask(base.TaskBase):
     def __init__(self, context, instance, flavor, filter_properties,
                  request_spec, reservations, clean_shutdown, compute_rpcapi,
-                 scheduler_client):
+                 scheduler_client, same_host_flag=False):
         super(MigrationTask, self).__init__(context, instance)
         self.clean_shutdown = clean_shutdown
         self.request_spec = request_spec
@@ -29,6 +29,8 @@ class MigrationTask(base.TaskBase):
 
         self.compute_rpcapi = compute_rpcapi
         self.scheduler_client = scheduler_client
+
+        self.same_host_flag = same_host_flag
 
     def _execute(self):
         image = self.request_spec.get('image')
@@ -43,8 +45,16 @@ class MigrationTask(base.TaskBase):
         # scheduler.utils methods to directly use the RequestSpec object
         spec_obj = objects.RequestSpec.from_primitives(
             self.context, self.request_spec, self.filter_properties)
-        hosts = self.scheduler_client.select_destinations(
-            self.context, spec_obj)
+
+        hostname = None
+        if self.same_host_flag:
+            hostname = self.instance.host
+            hosts = self.scheduler_client.select_destinations(
+                self.context, spec_obj, hostname)
+        else:
+            hosts = self.scheduler_client.select_destinations(
+                self.context, spec_obj)
+
         host_state = hosts[0]
 
         scheduler_utils.populate_filter_properties(self.filter_properties,
