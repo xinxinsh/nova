@@ -752,6 +752,40 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
         return body
 
     def qga_getuptime(self, servers_list):
+        returnval = dict()
+        result = []
+
+        # 1. check qga is live
+        for server in servers_list:
+            uri = 'http://%s:%s/test_qga' % (
+                CONF.qga_proxy.qga_proxy_host, CONF.qga_proxy.qga_proxy_port)
+
+            try:
+                headers = {}
+                recv = utils.http_post(uri, server['server_id'], headers)
+                body = recv.read().strip()
+                if recv.code != 200:
+                    raise Exception("Send to qga proxf failed: %s" % body)
+            except Exception:
+                returnval['return'] = {}
+                returnval['return']['msg'] = 'qga_proxy_downtime'
+                returnval['return']['nova-compute'] = CONF.host
+                return [returnval]
+
+            # {u'state': True}
+            if 'false' in body:
+                servers_list.remove(server)
+                ret = {
+                    'return': {
+                        'vm_uuid': server['server_id'],
+                        'vm_status': 'active',
+                        'msg': 'instance %s qga is down' % server['server_id'],
+                        'value': ''
+                    }
+                }
+                result.append(ret)
+
+        # 2. getuptime
         message = dict()
         message['execute'] = 'guest-terminal-cmd'
         message['arguments'] = {}
@@ -763,23 +797,28 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
             msg_json = [jsonutils.dumps(message)]
             post_data[server['server_id']] = msg_json
 
-        returnval = dict(state='qga_proxy_downtime')
         try:
             uri = 'http://%s:%s' % (CONF.qga_proxy.qga_proxy_host,
                                     CONF.qga_proxy.qga_proxy_port)
-            headers = {'TIMEOUT': 30, 'Content-Type': 'application/json'}
+            headers = {'TIMEOUT': 20, 'Content-Type': 'application/json'}
 
             recv = utils.http_post(uri, jsonutils.dumps(post_data), headers)
             body = recv.read().strip()
             if recv.code != 200:
                 raise Exception("Send to qga proxf failed: %s" % body)
-        except Exception as e:
-            returnval['msg'] = e
-            return returnval
+        except Exception:
+            returnval['return'] = {}
+            returnval['return']['msg'] = 'qga_proxy_downtime'
+            returnval['return']['nova-compute'] = CONF.host
+            return [returnval]
 
         try:
-            r = jsonutils.loads(body)
-            return r
+            ret = jsonutils.loads(body)
+            for r in ret:
+                r['return']['vm_status'] = 'active'
+
+            result.extend(ret)
+            return result
         except Exception:
             raise exception.QgaGetuptimeFailure(error=body,
                                                 method=message['execute'])

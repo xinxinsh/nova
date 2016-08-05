@@ -167,6 +167,7 @@ class GetuptimeController(wsgi.Controller):
             if self.servicegroup_api.service_is_up(service):
                 datas[service['host']] = []
 
+        result = []
         try:
             qga_getuptime = body['qgaGetuptime']
             servers = qga_getuptime['servers']
@@ -176,8 +177,21 @@ class GetuptimeController(wsgi.Controller):
         for s in servers:
             instance = common.get_instance(self.compute_api, context,
                                            s['server_id'])
-            if instance.host in datas:
-                datas[instance.host].append(s)
+
+            if instance.vm_state != 'active':
+                ret = {
+                    'return': {
+                        'vm_uuid': instance.uuid,
+                        'vm_status': instance.vm_state,
+                        'msg': 'instance %s vm_status is not \'active\''
+                               % instance.uuid,
+                        'value': ''
+                    }
+                }
+                result.append(ret)
+            else:
+                if instance.host in datas:
+                    datas[instance.host].append(s)
 
         rets = []
         try:
@@ -190,9 +204,21 @@ class GetuptimeController(wsgi.Controller):
             msg = _("qga_getuptime action failed")
             raise exc.HTTPUnprocessableEntity(explanation=msg)
 
-        result = []
         for ret in rets:
-            result.extend(ret.wait())
+            ret_host = ret.wait()
+            if ret_host[0]['return']['msg'] == 'qga_proxy_downtime':
+                for servers in datas[ret_host[0]['return']['nova-compute']]:
+                    ret_server = {
+                        'return': {
+                            'vm_uuid': servers['server_id'],
+                            'vm_status': 'active',
+                            'msg': 'qga_proxy_downtime',
+                            'value': ''
+                        }
+                    }
+                    result.append(ret_server)
+            else:
+                result.extend(ret_host)
 
         self.pool.waitall()
 
