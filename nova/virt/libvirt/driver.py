@@ -2187,7 +2187,8 @@ class LibvirtDriver(driver.ComputeDriver):
                 self._volume_snapshot_update_status(
                     context, snapshot_id, 'error')
 
-        if (create_info.get('ext_snapshot', False) and
+        if (guest.is_active() and
+            create_info.get('ext_snapshot', False) and
             create_info.get('file_to_merge', None) is not None):
             try:
                 self._volume_snapshot_delete(context, instance,
