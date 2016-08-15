@@ -308,6 +308,7 @@ class LegacyValidatingNotifier(object):
         'compute.instance.unshelve.start',
         'compute.instance.unshelve.end',
         'compute.instance.update',
+        'compute.instance.vm_status_error.end',
         'compute.instance.volume.attach',
         'compute.instance.volume.detach',
         'compute.libvirt.error',

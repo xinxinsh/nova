@@ -214,6 +214,10 @@ interval_opts = [
                     'at the default periodic interval. Setting it to any '
                     'positive value will cause it to run at approximately '
                     'that number of seconds.'),
+    cfg.IntOpt('instance_checkerror_interval',
+               default=300,
+               help='Interval in seconds for checking error instance, then '
+                    'send to rabbitmq.'),
 ]
 
 timeout_opts = [
@@ -5982,6 +5986,25 @@ class ComputeManager(manager.Manager):
         self._notify_about_instance_usage(
                         context, instance, "live_migration.rollback.dest.end",
                         network_info=network_info)
+
+    @periodic_task.periodic_task(
+        spacing=CONF.instance_checkerror_interval)
+    def _check_instance_status(self, context):
+        """Called periodically. On every call, try to check the list of
+        instances status, then send the error instance to rabbitmq
+        """
+
+        LOG.debug('Checking the list of instances status, then send '
+                  'the error instance to rabbitmq')
+        db_instances = objects.InstanceList.get_by_host(
+            context, self.host, expected_attrs=[], use_slave=True)
+
+        for inst in db_instances:
+            if (inst.vm_state == vm_states.ERROR):
+                LOG.info(_LI('Checking the error status instance, then '
+                             'send the instance to rabbitmq'), instance=inst)
+                self._notify_about_instance_usage(context, inst,
+                                                  "vm_status_error.end")
 
     @periodic_task.periodic_task(
         spacing=CONF.heal_instance_info_cache_interval)
