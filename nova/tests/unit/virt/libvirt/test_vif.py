@@ -475,14 +475,17 @@ class LibvirtVifTestCase(test.NoDBTestCase):
         conf.add_device(nic)
         return conf.to_xml()
 
-    def test_virtio_multiqueue(self):
+    def _virtio_multiqueue_setup(self, n_virtio_queues, n_vcpus,
+                                 hw_vif_multiqueue_enabled,
+                                 flavor_multiqueue_enabled):
         self.flags(use_virtio_for_bridges=True,
                    virt_type='kvm',
-                   group='libvirt')
+                   group='libvirt',
+                   virtio_queue_number=n_virtio_queues)
 
         flavor = objects.Flavor(name='m1.small',
                     memory_mb=128,
-                    vcpus=4,
+                    vcpus=n_vcpus,
                     root_gb=0,
                     ephemeral_gb=0,
                     swap=0,
@@ -491,18 +494,57 @@ class LibvirtVifTestCase(test.NoDBTestCase):
                     created_at=None, flavorid=1,
                     is_public=True, vcpu_weight=None,
                     id=2, disabled=False, rxtx_factor=1.0)
+        if flavor_multiqueue_enabled:
+            flavor.extra_specs = {'hw:vif_multiqueue_enabled': True}
 
-        d = vif.LibvirtGenericVIFDriver()
         image_meta = objects.ImageMeta.from_dict(
             {'properties': {'hw_vif_model': 'virtio',
-                            'hw_vif_multiqueue_enabled': 'true'}})
-        xml = self._get_instance_xml(d, self.vif_bridge,
-                                     image_meta, flavor)
+             'hw_vif_multiqueue_enabled': hw_vif_multiqueue_enabled}})
+
+        return (flavor, image_meta)
+
+    def test_virtio_multiqueue(self):
+
+        d = vif.LibvirtGenericVIFDriver()
+
+        # queue = -1
+        flavor, image_meta = self._virtio_multiqueue_setup(-1, 4, True, False)
+        xml = self._get_instance_xml(d, self.vif_bridge, image_meta, flavor)
 
         node = self._get_node(xml)
         driver = node.find("driver").get("name")
-        self.assertEqual(driver, 'vhost')
         queues = node.find("driver").get("queues")
+        self.assertEqual(driver, 'vhost')
+        self.assertEqual(queues, '4')
+
+        # queue = 0
+        flavor, image_meta = self._virtio_multiqueue_setup(0, 4, False, False)
+        xml = self._get_instance_xml(d, self.vif_bridge, image_meta, flavor)
+
+        node = self._get_node(xml)
+        driver = node.find("driver").get("name")
+        queues = node.find("driver").get("queues")
+        self.assertEqual(driver, 'vhost')
+        self.assertEqual(queues, '4')
+
+        # queue = 2
+        flavor, image_meta = self._virtio_multiqueue_setup(2, 4, False, True)
+        xml = self._get_instance_xml(d, self.vif_bridge, image_meta, flavor)
+
+        node = self._get_node(xml)
+        driver = node.find("driver").get("name")
+        queues = node.find("driver").get("queues")
+        self.assertEqual(driver, 'vhost')
+        self.assertEqual(queues, '2')
+
+        # queue = 6
+        flavor, image_meta = self._virtio_multiqueue_setup(6, 4, False, True)
+        xml = self._get_instance_xml(d, self.vif_bridge, image_meta, flavor)
+
+        node = self._get_node(xml)
+        driver = node.find("driver").get("name")
+        queues = node.find("driver").get("queues")
+        self.assertEqual(driver, 'vhost')
         self.assertEqual(queues, '4')
 
     def test_multiple_nics(self):

@@ -41,6 +41,20 @@ libvirt_vif_opts = [
     cfg.BoolOpt('use_virtio_for_bridges',
                 default=True,
                 help='Use virtio for bridge interfaces with KVM/QEMU'),
+    cfg.IntOpt('virtio_queue_number',
+                default=-1,
+                help='Virtio queue numbers of a KVM/QEMU guest, '
+                     'default -1 means conf does not limit the queue numbers, '
+                     'it depends on hw_vif_multiqueue_enabled in ImageMeta '
+                     'or hw:vif_multiqueue_enabled in flavor extra_specs.'
+                     '0 has the same results with vif_multiqueue_enabled, '
+                     'the same queue numbers with vcpus.'
+                     '> 0 means the actul queue numbers, but if it greater '
+                     'than the number of the vcpus, it will cut down to the '
+                     'number of vcpus.'
+                     'The param virtio_queue_number has the highest priority, '
+                     'only when it < 0 like -1, vif_multiqueue_enabled will '
+                     'take effect.'),
 ]
 
 CONF = cfg.CONF
@@ -147,6 +161,17 @@ class LibvirtGenericVIFDriver(object):
         vhost_queues = None
         flavor_vif_mq = False
 
+        if flavor is None:
+            return (None, None)
+
+        conf_queue_number = CONF.libvirt.virtio_queue_number
+        if conf_queue_number > 0 and conf_queue_number < flavor.vcpus:
+            driver = 'vhost'
+            vhost_queues = conf_queue_number
+        elif conf_queue_number == 0 or conf_queue_number >= flavor.vcpus:
+            driver = 'vhost'
+            vhost_queues = flavor.vcpus
+
         if (flavor and 'extra_specs' in flavor and
             'hw:vif_multiqueue_enabled' in flavor['extra_specs']):
             flavor_vif_mq = flavor['extra_specs']['hw:vif_multiqueue_enabled']
@@ -154,7 +179,8 @@ class LibvirtGenericVIFDriver(object):
         if not isinstance(image_meta, objects.ImageMeta):
             image_meta = objects.ImageMeta.from_dict(image_meta)
         img_props = image_meta.properties
-        if img_props.get('hw_vif_multiqueue_enabled') or flavor_vif_mq:
+        if conf_queue_number < 0 and \
+           (img_props.get('hw_vif_multiqueue_enabled') or flavor_vif_mq):
             driver = 'vhost'
             vhost_queues = flavor.vcpus
 
