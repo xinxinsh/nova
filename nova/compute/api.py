@@ -2245,7 +2245,6 @@ class API(base.Base):
 
     # NOTE(melwitt): We don't check instance lock for snapshot because lock is
     #                intended to prevent accidental change/delete of instances
-    @wrap_check_policy
     @check_instance_cell
     @check_instance_state(vm_state=[vm_states.ACTIVE, vm_states.STOPPED,
                                     vm_states.PAUSED, vm_states.SUSPENDED])
@@ -3796,7 +3795,6 @@ class API(base.Base):
     def ensure_detach_disk_config(self, context, instance):
         self.compute_rpcapi.ensure_detach_disk_config(context, instance)
 
-    @wrap_check_policy
     def get_snapshot_info(self, context, image_id):
 
         image_service = glance.get_default_image_service()
@@ -3839,7 +3837,6 @@ class API(base.Base):
 
         return snapshot_info
 
-    @wrap_check_policy
     def delete_vm_snapshot(self, context, image_id):
 
         image_service = glance.get_default_image_service()
@@ -3923,7 +3920,6 @@ class API(base.Base):
             msg = (_('the snapshot of id:%s is in the wrong state') % image_id)
             return msg
 
-    @wrap_check_policy
     @check_instance_state(vm_state=[vm_states.STOPPED])
     def rollback_to_memory_snapshot(self, context, instance, image_meta):
         self.compute_rpcapi.rollback_to_memory_snapshot(context,
