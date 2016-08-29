@@ -3391,6 +3391,31 @@ class API(base.Base):
             port_id=port_id)
 
     @wrap_check_policy
+    @check_instance_lock
+    @check_instance_state(vm_state=[vm_states.ACTIVE, vm_states.PAUSED,
+                                    vm_states.STOPPED],
+                          task_state=[None])
+    def attach_mem(self, context, instance, target_size, target_node,
+                   source_pagesize, source_nodemask):
+        """Use hotplug to add a memory to an instance."""
+        return self.compute_rpcapi.attach_mem(context,
+                                              instance=instance,
+                                              target_size=target_size,
+                                              target_node=target_node,
+                                              source_pagesize=source_pagesize,
+                                              source_nodemask=source_nodemask)
+
+    @wrap_check_policy
+    @check_instance_lock
+    @check_instance_state(vm_state=[vm_states.ACTIVE, vm_states.PAUSED,
+                                    vm_states.STOPPED],
+                          task_state=[None])
+    def detach_mem(self, context, instance, mem_dev):
+        """Detach an memory hotplugin from an instance."""
+        self.compute_rpcapi.detach_mem(context, instance=instance,
+                                       mem_dev=mem_dev)
+
+    @wrap_check_policy
     def get_instance_metadata(self, context, instance):
         """Get all metadata associated with an instance."""
         return self.db.instance_metadata_get(context, instance.uuid)

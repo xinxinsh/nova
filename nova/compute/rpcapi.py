@@ -451,6 +451,24 @@ class ComputeAPI(object):
         return cctxt.call(ctxt, 'change_cdrom', instance=instance,
                           iso_name=iso_name)
 
+    def attach_mem(self, ctxt, instance, target_size, target_node,
+                   source_pagesize, source_nodemask):
+        version = '3.37'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                version=version)
+        return cctxt.call(ctxt, 'attach_mem',
+                          instance=instance, target_size=target_size,
+                          target_node=target_node,
+                          source_pagesize=source_pagesize,
+                          source_nodemask=source_nodemask)
+
+    def detach_mem(self, ctxt, instance, mem_dev):
+        version = '3.37'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                version=version)
+        cctxt.cast(ctxt, 'detach_mem',
+                   instance=instance, mem_dev=mem_dev)
+
     def attach_volume(self, ctxt, instance, bdm):
         version = '4.0'
         cctxt = self.client.prepare(server=_compute_host(None, instance),

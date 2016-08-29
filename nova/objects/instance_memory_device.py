@@ -16,6 +16,7 @@ from nova.objects import base
 from nova.objects import fields
 
 
+@base.NovaObjectRegistry.register
 class InstanceMemoryDevice(base.NovaPersistentObject, base.NovaObject):
     # Version 1.0: Initial version
     VERSION = '1.0'
@@ -86,6 +87,7 @@ class InstanceMemoryDevice(base.NovaPersistentObject, base.NovaObject):
                              db.instance_memory_devices_get(context, self.id))
 
 
+@base.NovaObjectRegistry.register
 class InstanceMemoryDeviceList(base.ObjectListBase, base.NovaObject):
     # Version 1.0: Initial version
     VERSION = '1.0'
@@ -116,9 +118,9 @@ class InstanceMemoryDeviceList(base.ObjectListBase, base.NovaObject):
                                   objects.InstanceMemoryDevice, devices)
 
     @base.remotable_classmethod
-    def get_by_instance_uuid(cls, context, instance_uuid, use_slave=False):
+    def get_by_instance_uuid(cls, context, instance_uuid):
         devices = db.instance_memory_devices_get_by_instance_uuid(
-            context, instance_uuid, use_slave=use_slave)
+            context, instance_uuid)
         return base.obj_make_list(context, cls(context),
                                   objects.InstanceMemoryDevice, devices)
 

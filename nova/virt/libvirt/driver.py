@@ -4090,6 +4090,16 @@ class LibvirtDriver(driver.ComputeDriver):
                     guest_cell.memAccess = "shared"
                 guest_cpu_numa.cells.append(guest_cell)
             return guest_cpu_numa
+        else:
+            # default add all cpus to numa cell 0 for memory hotplugin
+            # guest_cpu_numa = vconfig.LibvirtConfigGuestCPUNUMA()
+            # guest_cell = vconfig.LibvirtConfigGuestCPUNUMACell()
+            # guest_cell.id = '0'
+            # guest_cell.cpus = range(instance.vcpus)
+            # guest_cell.memory = instance.memory_mb * units.Ki
+            # guest_cpu_numa.cells.append(guest_cell)
+            # return guest_cpu_numa
+            LOG.info(_LI('MYLOG get cpu numa'))
 
     def _has_cpu_policy_support(self):
         for ver in BAD_LIBVIRT_CPU_POLICY_VERSIONS:
@@ -4776,6 +4786,16 @@ class LibvirtDriver(driver.ComputeDriver):
         cdrom = self._get_guest_cdrom_device(instance, None, True)
         guest.add_device(cdrom)
 
+        # add mem dev
+        try:
+            mems = objects.InstanceMemoryDeviceList.\
+                   get_by_instance_uuid(context,
+                                        instance['uuid'])
+            for mem in mems:
+                if mem is not None:
+                    guest.add_device(self._create_memory_dev_by_obj(mem))
+        except Exception:
+            LOG.warn(_LW("warning vm get memory device list"))
         for vif in network_info:
             config = self.vif_driver.get_config(
                 instance, vif, image_meta,
@@ -7557,6 +7577,85 @@ class LibvirtDriver(driver.ComputeDriver):
         """Returns the result of calling "uptime"."""
         out, err = utils.execute('env', 'LANG=C', 'uptime')
         return out
+
+    def _get_last_mem_dev_from_xml(self, virt_dom):
+        xml = virt_dom.XMLDesc(0)
+        tree = etree.fromstring(xml)
+        for memory in tree.findall("./devices/memory[last()]"):
+            if memory.get("model") == "dimm":
+                alias = memory.find("./alias")
+                return str(alias.get("name"))
+            else:
+                return "dimm"
+        return "dimm"
+
+    def _create_memory_device(self, instance, target_size, target_node,
+                              source_pagesize, source_nodemask):
+        xml = vconfig.LibvirtConfigGuestMemoryDevice()
+        xml.model = 'dimm'
+        xml.target = vconfig.LibvirtConfigGuestMemoryDeviceTarget()
+        xml.target.target_size = target_size
+        xml.target.target_node = target_node
+        return xml
+
+    def attach_mem(self, instance, image_meta, target_size,
+                   target_node, source_pagesize, source_nodemask):
+        virt_dom = self._lookup_by_name(instance['name'])
+        cfg = self._create_memory_device(instance, target_size, target_node,
+                                         source_pagesize, source_nodemask)
+        try:
+            flags = libvirt.VIR_DOMAIN_AFFECT_CONFIG
+            state = LIBVIRT_POWER_STATE[virt_dom.info()[0]]
+            if state == power_state.RUNNING or state == power_state.PAUSED:
+                flags |= libvirt.VIR_DOMAIN_AFFECT_LIVE
+            # attach away return 0 so check by compare
+            # with the last memory device name
+            old_last_dev = self._get_last_mem_dev_from_xml(virt_dom)
+            virt_dom.attachDeviceFlags(cfg.to_xml(), flags)
+            new_last_dev = self._get_last_mem_dev_from_xml(virt_dom)
+            if old_last_dev == new_last_dev:
+                raise libvirt.libvirtError
+            LOG.info(_LI("attach memory hotplugin success"),
+                     instance=instance)
+            return new_last_dev
+        except libvirt.libvirtError:
+            LOG.error(_LE('attaching memory hotplugin failed.'),
+                     instance=instance)
+            raise exception.MemAttachFailed(
+                    instance_uuid=instance['uuid'])
+
+    def _create_memory_dev_by_obj(self, mem_dev):
+        cfg_mem = vconfig.LibvirtConfigGuestMemoryDevice()
+        cfg_mem.model = mem_dev['model']
+        cfg_mem.target = vconfig.LibvirtConfigGuestMemoryDeviceTarget()
+        cfg_mem.target.target_size = mem_dev['target_size']
+        cfg_mem.target.target_node = mem_dev['target_node']
+        cfg_mem.alias_name = mem_dev['name']
+        LOG.info(_LI("mem xml:  %s "), str(cfg_mem.to_xml()))
+        return cfg_mem
+
+    def detach_mem(self, instance, mem_dev):
+        virt_dom = self._lookup_by_name(instance['name'])
+        cfg_mem = self._create_memory_dev_by_obj(mem_dev)
+        try:
+            flags = libvirt.VIR_DOMAIN_AFFECT_CONFIG
+            state = LIBVIRT_POWER_STATE[virt_dom.info()[0]]
+            if state == power_state.RUNNING or state == power_state.PAUSED:
+                flags |= libvirt.VIR_DOMAIN_AFFECT_LIVE
+            virt_dom.detachDeviceFlags(cfg_mem.to_xml(), flags)
+            LOG.info(_LI("detach memory hotplugin success"),
+                     instance=instance)
+        except libvirt.libvirtError as ex:
+            error_code = ex.get_error_code()
+            if error_code == libvirt.VIR_ERR_NO_DOMAIN:
+                LOG.warn(_LW("During detach_mem, "
+                             "instance disappeared."),
+                         instance=instance)
+            else:
+                LOG.error(_LE('detaching memory hotplugin failed.'),
+                         instance=instance, exc_info=True)
+                raise exception.MemDetachFailed(
+                        instance_uuid=instance['uuid'])
 
     def manage_image_cache(self, context, all_instances):
         """Manage the local cache of images."""

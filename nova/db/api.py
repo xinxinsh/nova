@@ -2057,16 +2057,13 @@ def instance_tag_exists(context, instance_uuid, tag):
 
 
 def instance_memory_devices_get_by_instance_uuid(context,
-                                                 instance_uuid,
-                                                 use_slave=False):
+                                                 instance_uuid):
     """Get the instance memory devices
 
     :param instance_uuid: = uuid of the instance memory hotplugin
     """
     return IMPL.instance_memory_devices_get_by_instance_uuid(context,
-                                                             instance_uuid,
-                                                             use_slave=
-                                                             use_slave)
+                                                             instance_uuid)
 
 
 def instance_memory_devices_update_by_uuid(context, instance_uuid, updates):

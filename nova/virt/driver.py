@@ -533,6 +533,22 @@ class ComputeDriver(object):
     def change_cdrom(self, instance, iso_name):
         raise NotImplementedError()
 
+    def attach_mem(self, instance, image_meta, target_size,
+                   target_node, source_pagesize,
+                   source_nodemask):
+        """Attach a memory hotplugin to the instance.
+
+        :param instance: nova.objects.instance.Instance
+        """
+        raise NotImplementedError()
+
+    def detach_mem(self, instance, mem_dev):
+        """Detach a memory hotplugin from the instance.
+
+        :param instance: nova.objects.instance.Instance
+        """
+        raise NotImplementedError()
+
     def migrate_disk_and_power_off(self, context, instance, dest,
                                    flavor, network_info,
                                    block_device_info=None,

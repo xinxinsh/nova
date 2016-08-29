@@ -5293,6 +5293,39 @@ class ComputeManager(manager.Manager):
                                 {'port_id': port_id, 'error': ex},
                                 instance=instance)
 
+    @object_compat
+    @wrap_exception()
+    @reverts_task_state
+    @wrap_instance_fault
+    def attach_mem(self, context, instance, target_size,
+                   target_node, source_pagesize, source_nodemask):
+        """Use hotplug to add a memory device to an instance."""
+        image_ref = instance.get('image_ref')
+        image_meta = compute_utils.get_image_metadata(
+            context, self.image_api, image_ref, instance)
+        return self.driver.attach_mem(instance, image_meta,
+                                      target_size, target_node,
+                                      source_pagesize,
+                                      source_nodemask)
+
+    @object_compat
+    @wrap_exception()
+    @reverts_task_state
+    @wrap_instance_fault
+    def detach_mem(self, context, instance, mem_dev):
+        """Detach a memory hotplugin from an instance."""
+        if mem_dev is None:
+            raise exception.MemNotFound(_("Mem %s is not "
+                                           "attached") % mem_dev['name'])
+        try:
+            self.driver.detach_mem(instance, mem_dev)
+        except exception.NovaException as ex:
+            LOG.warning(_LW("Detach memory failed, mem_name=%(mem_name)s,"
+                            "reason: %(msg)s"),
+                            {'mem_name': mem_dev['name'], 'msg': ex},
+                            instance=instance)
+            raise exception.MemDetachFailed(instance_uuid=instance.uuid)
+
     def _get_compute_info(self, context, host):
         return objects.ComputeNode.get_first_node_by_host_for_old_compat(
             context, host)

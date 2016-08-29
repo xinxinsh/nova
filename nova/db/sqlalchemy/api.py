@@ -7016,6 +7016,7 @@ def instance_tag_exists(context, instance_uuid, tag):
 
 
 @require_context
+@pick_context_manager_writer
 def instance_memory_devices_create(context, values):
     inst_mem_dev = models.InstanceMemoryDevice()
     inst_mem_dev.update(values)
@@ -7024,6 +7025,7 @@ def instance_memory_devices_create(context, values):
 
 
 @require_context
+@pick_context_manager_writer
 def instance_memory_devices_update_by_uuid(context, instance_uuid, values):
     return model_query(context, models.InstanceMemoryDevice).\
         filter_by(instance_uuid=instance_uuid).\
@@ -7031,26 +7033,26 @@ def instance_memory_devices_update_by_uuid(context, instance_uuid, values):
 
 
 @require_context
-def _instance_memory_devices_get_by_instance_uuid_query(context,
-                                                        use_slave=False):
+@pick_context_manager_reader
+def _instance_memory_devices_get_by_instance_uuid_query(context):
     return model_query(context, models.InstanceMemoryDevice,
-                       session=None, read_deleted="no", use_slave=use_slave)
+                       read_deleted="no")
 
 
 @require_context
-def instance_memory_devices_get_by_instance_uuid(context, instance_uuid,
-                                                 use_slave=False):
+def instance_memory_devices_get_by_instance_uuid(context, instance_uuid):
     query = _instance_memory_devices_get_by_instance_uuid_query(
-        context, use_slave=use_slave).filter_by(instance_uuid=instance_uuid).\
+        context).filter_by(instance_uuid=instance_uuid).\
         order_by(asc("created_at"), asc("id"))
     instance_memory_device = query.all()
     return instance_memory_device
 
 
 @require_context
+@pick_context_manager_reader
 def instance_memory_devices_get_by_name_uuid(context, name, instance_uuid,
                                              columns_to_join=None):
-    query = model_query(context, models.InstanceMemoryDevice, session=None,
+    query = model_query(context, models.InstanceMemoryDevice,
             read_deleted="no")
     query.filter_by(name=name).filter_by(instance_uuid=instance_uuid).all()
     result = query.first()
@@ -7060,8 +7062,9 @@ def instance_memory_devices_get_by_name_uuid(context, name, instance_uuid,
 
 
 @require_context
+@pick_context_manager_writer
 def instance_memory_devices_destroy_by_name_uuid(context, name, instance_uuid):
-    model_query(context, models.InstanceMemoryDevice, session=None,
+    model_query(context, models.InstanceMemoryDevice,
                 read_deleted="no").filter_by(name=name).\
                 filter_by(instance_uuid=instance_uuid).soft_delete()
 

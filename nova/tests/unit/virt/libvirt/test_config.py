@@ -1596,6 +1596,7 @@ class LibvirtConfigGuestTest(LibvirtConfigBaseTest):
               <uuid>b38a3f43-4be2-4046-897f-b67c2f5e0147</uuid>
               <name>demo</name>
               <memory>104857600</memory>
+              <maxMemory slots="128">171966464</maxMemory>
               <vcpu cpuset="0-1,3-5">2</vcpu>
               <os>
                 <type>exe</type>
@@ -1642,6 +1643,7 @@ class LibvirtConfigGuestTest(LibvirtConfigBaseTest):
               <uuid>b38a3f43-4be2-4046-897f-b67c2f5e0147</uuid>
               <name>demo</name>
               <memory>104857600</memory>
+              <maxMemory slots="128">171966464</maxMemory>
               <vcpu cpuset="0-1,3-5">2</vcpu>
               <os>
                 <type>exe</type>
@@ -1687,6 +1689,7 @@ class LibvirtConfigGuestTest(LibvirtConfigBaseTest):
               <uuid>b38a3f43-4be2-4046-897f-b67c2f5e0147</uuid>
               <name>demo</name>
               <memory>104857600</memory>
+              <maxMemory slots="128">171966464</maxMemory>
               <vcpu cpuset="0-1,3-5">2</vcpu>
               <os>
                 <type>linux</type>
@@ -1735,6 +1738,7 @@ class LibvirtConfigGuestTest(LibvirtConfigBaseTest):
               <uuid>b38a3f43-4be2-4046-897f-b67c2f5e0147</uuid>
               <name>demo</name>
               <memory>104857600</memory>
+              <maxMemory slots="128">171966464</maxMemory>
               <vcpu cpuset="0-1,3-5">2</vcpu>
               <os>
                 <type>hvm</type>
@@ -1840,6 +1844,7 @@ class LibvirtConfigGuestTest(LibvirtConfigBaseTest):
               <uuid>b38a3f43-4be2-4046-897f-b67c2f5e0147</uuid>
               <name>demo</name>
               <memory>104857600</memory>
+              <maxMemory slots="128">171966464</maxMemory>
               <memoryBacking>
                 <hugepages>
                   <page size="2048" unit="KiB" nodeset="0-3,5"/>
@@ -1910,6 +1915,7 @@ class LibvirtConfigGuestTest(LibvirtConfigBaseTest):
               <uuid>f01cf68d-515c-4daf-b85f-ef1424d93bfc</uuid>
               <name>uefi</name>
               <memory>104857600</memory>
+              <maxMemory slots="128">171966464</maxMemory>
               <vcpu>1</vcpu>
               <os>
                 <type>x86_64</type>
@@ -1935,6 +1941,7 @@ class LibvirtConfigGuestTest(LibvirtConfigBaseTest):
               <uuid>f01cf68d-515c-4daf-b85f-ef1424d93bfc</uuid>
               <name>bootmenu</name>
               <memory>104857600</memory>
+              <maxMemory slots="128">171966464</maxMemory>
               <vcpu>2</vcpu>
               <os>
                 <type>fake</type>
@@ -1959,6 +1966,7 @@ class LibvirtConfigGuestTest(LibvirtConfigBaseTest):
               <uuid>b38a3f43-4be2-4046-897f-b67c2f5e0147</uuid>
               <name>demo</name>
               <memory>104857600</memory>
+              <maxMemory slots='128'>171966464</maxMemory>
               <vcpu>2</vcpu>
               <os>
                 <type machine="fake_machine_type">hvm</type>

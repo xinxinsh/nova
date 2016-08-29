@@ -23,6 +23,7 @@ policy belongs in the 'designer.py' module which provides simplified
 helpers for populating up config object instances.
 """
 
+import libvirt
 import time
 
 from lxml import etree
@@ -34,7 +35,6 @@ from nova import exception
 from nova.i18n import _
 from nova.pci import utils as pci_utils
 from nova.virt import hardware
-
 
 LOG = logging.getLogger(__name__)
 
@@ -1733,6 +1733,67 @@ class LibvirtConfigGuestCPUTune(LibvirtConfigObject):
         return root
 
 
+class LibvirtConfigGuestMemoryDeviceTarget(LibvirtConfigGuestDevice):
+    def __init__(self, **kwargs):
+        super(LibvirtConfigGuestMemoryDeviceTarget, self).\
+                __init__(root_name="target",
+                         **kwargs)
+
+        self.target_size = None
+        self.target_node = None
+
+    def parse_dom(self, xmldoc):
+        super(LibvirtConfigGuestMemoryDeviceTarget, self).parse_dom(xmldoc)
+        for c in xmldoc.getchildren():
+            if c.tag == "target_size":
+                self.target_size = c.text
+            if c.tag == "target_node":
+                self.target_node = c.text
+
+    def format_dom(self):
+        target = super(LibvirtConfigGuestMemoryDeviceTarget, self).format_dom()
+        target_size = self._text_node("size", self.target_size)
+        target_node = self._text_node("node", self.target_node)
+        target.append(target_size)
+        target.append(target_node)
+        return target
+
+
+class LibvirtConfigGuestMemoryDevice(LibvirtConfigGuestDevice):
+
+    def __init__(self, **kwargs):
+        super(LibvirtConfigGuestMemoryDevice, self).\
+                __init__(root_name="memory",
+                         **kwargs)
+
+        self.model = None
+        self.target = None
+        self.alias_name = None
+
+    def parse_dom(self, xmldoc):
+        super(LibvirtConfigGuestMemoryDevice, self).parse_dom(xmldoc)
+        self.model = xmldoc.get('model')
+        for child in xmldoc.getchildren():
+            if child.tag == "target":
+                target = LibvirtConfigGuestMemoryDeviceTarget()
+                target.parse_dom(child)
+                self.target = target
+            if child.tag == 'alias':
+                self.alias_name = child.name
+
+    def format_dom(self):
+        dev = super(LibvirtConfigGuestMemoryDevice, self).format_dom()
+        if self.model:
+            dev.set("model", self.model)
+        if self.target is not None:
+            dev.append(self.target.format_dom())
+        if self.alias_name is not None:
+            alias = etree.Element("alias")
+            alias.set("name", self.alias_name)
+            dev.append(alias)
+        return dev
+
+
 class LibvirtConfigGuestMemoryBacking(LibvirtConfigObject):
 
     def __init__(self, **kwargs):
@@ -1966,6 +2027,14 @@ class LibvirtConfigGuest(LibvirtConfigObject):
         root.append(self._text_node("uuid", self.uuid))
         root.append(self._text_node("name", self.name))
         root.append(self._text_node("memory", self.memory))
+
+        # add maxMemory and Version >= 1002015 libvirt 1.2.15
+        if libvirt.getVersion(None) >= 1002015:
+            maxMemory = self._text_node("maxMemory",
+                                        str(int(self.memory) + 67108864))
+            maxMemory.set("slots", "128")
+            root.append(maxMemory)
+
         if self.membacking is not None:
             root.append(self.membacking.format_dom())
         if self.memtune is not None:
