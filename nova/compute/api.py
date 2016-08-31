@@ -2512,6 +2512,24 @@ class API(base.Base):
 
     @wrap_check_policy
     @check_instance_lock
+    @check_instance_state(vm_state=[vm_states.ACTIVE])
+    def cpu_hotplug(self, context, instance, cpu_num):
+        """Hot plug vcpu to instance."""
+        cpu_data = self.compute_rpcapi.cpu_hotplug(context,
+                                instance=instance, cpu_num=cpu_num)
+        return cpu_data
+
+    @wrap_check_policy
+    @check_instance_lock
+    @check_instance_state(vm_state=[vm_states.ACTIVE])
+    def cpu_show(self, context, instance):
+        """Show cpu current and max num of instance."""
+        cpu_data = self.compute_rpcapi.cpu_show(context,
+                                instance=instance)
+        return cpu_data
+
+    @wrap_check_policy
+    @check_instance_lock
     @check_instance_cell
     @check_instance_state(vm_state=[vm_states.ACTIVE, vm_states.STOPPED,
                                     vm_states.ERROR])

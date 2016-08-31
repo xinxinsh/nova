@@ -5297,12 +5297,26 @@ class ComputeManager(manager.Manager):
     @wrap_exception()
     @reverts_task_state
     @wrap_instance_fault
+    def cpu_show(self, context, instance):
+        """show current and max cpu for an instance."""
+        return self.driver.cpu_show(instance)
+
+    @object_compat
+    @wrap_exception()
+    @reverts_task_state
+    @wrap_instance_fault
+    def cpu_hotplug(self, context, instance, cpu_num):
+        """Hotplug vcpu to an instance."""
+        return self.driver.cpu_hotplug(instance, cpu_num)
+
+    @object_compat
+    @wrap_exception()
+    @reverts_task_state
+    @wrap_instance_fault
     def attach_mem(self, context, instance, target_size,
                    target_node, source_pagesize, source_nodemask):
         """Use hotplug to add a memory device to an instance."""
-        image_ref = instance.get('image_ref')
-        image_meta = compute_utils.get_image_metadata(
-            context, self.image_api, image_ref, instance)
+        image_meta = objects.ImageMeta.from_instance(instance)
         return self.driver.attach_mem(instance, image_meta,
                                       target_size, target_node,
                                       source_pagesize,

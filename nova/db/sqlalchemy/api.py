@@ -7020,7 +7020,7 @@ def instance_tag_exists(context, instance_uuid, tag):
 def instance_memory_devices_create(context, values):
     inst_mem_dev = models.InstanceMemoryDevice()
     inst_mem_dev.update(values)
-    inst_mem_dev.save()
+    inst_mem_dev.save(context.session)
     return inst_mem_dev
 
 

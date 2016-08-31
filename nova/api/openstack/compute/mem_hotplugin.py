@@ -19,11 +19,11 @@ from nova import compute
 from nova import exception
 from nova.i18n import _
 from nova import objects
-
-from nova.openstack.common import log as logging
+from oslo_log import log as logging
 
 LOG = logging.getLogger(__name__)
-authorize = extensions.extension_authorizer('compute', 'attach_mem')
+ALIAS = "mem_hotplugin"
+authorize = extensions.os_compute_authorizer(ALIAS)
 
 
 def _translate_mem_attachment_view(model, alias_name, instance_uuid,
@@ -50,23 +50,22 @@ def _translate_mem_attachment(mem):
     }
 
 
-class MemAttachmentController(wsgi.Controller):
+class MemHotpluginController(wsgi.Controller):
     """The memory hotplugin attachment API controller for the OpenStack API."""
 
     def __init__(self):
         self.compute_api = compute.API()
-        super(MemAttachmentController, self).__init__()
+        super(MemHotpluginController, self).__init__()
 
     def _items(self, req, server_id, entity_maker):
         """Returns a list of attachments, transformed through entity_maker."""
         context = req.environ['nova.context']
         authorize(context)
-        use_slave = False
         instance = common.get_instance(
-            self.compute_api, context, server_id, want_objects=True)
+            self.compute_api, context, server_id)
         results = []
         mems = objects.InstanceMemoryDeviceList.get_by_instance_uuid(
-            context, instance['uuid'], use_slave=use_slave)
+            context, instance['uuid'])
         results = [entity_maker(mem) for mem in mems]
         return {'memAttachments': results}
 
@@ -102,9 +101,7 @@ class MemAttachmentController(wsgi.Controller):
 
         try:
             instance = common.get_instance(self.compute_api,
-                                           context, server_id,
-                                           want_objects=True)
-            LOG.audit(_("Attach memory"), instance=instance)
+                                           context, server_id)
             alias_name = self.compute_api.attach_mem(context,
                                                      instance,
                                                      target_size,
@@ -146,12 +143,9 @@ class MemAttachmentController(wsgi.Controller):
         mem_name = id
         try:
             instance = common.get_instance(self.compute_api,
-                                           context, server_id,
-                                           want_objects=True)
+                                           context, server_id)
             mem_dev = objects.InstanceMemoryDevice.get_by_name_uuid(
                 context, mem_name, instance['uuid'])
-            LOG.audit(_("Detach memory %s"), mem_dev[
-                      'name'], instance=instance)
             self.compute_api.detach_mem(context, instance, mem_dev=mem_dev)
             objects.InstanceMemoryDevice.destroy_by_name_uuid(
                 context, mem_name, instance['uuid'])
@@ -177,22 +171,24 @@ class MemAttachmentController(wsgi.Controller):
         return webob.Response(status_int=202)
 
 
-class Mem_hotplugin(extensions.ExtensionDescriptor):
+class Mem_hotplugin(extensions.V21APIExtensionBase):
     """Attach memory hotplugin support. """
 
     name = "MemHotplugin"
     # Must follow the naming conversion for extension to work
-    alias = "os-mem-hotplugin"
-    namespace = (
-        "http://docs.openstack.org/compute/ext/mem_hotplugin/api/v1.1")
-    updated = "2016-02-02T00:00:00Z"
+    alias = "mem_hotplugin"
+    version = 1
 
     def get_resources(self):
-        resources = []
-        extenion = extensions.ResourceExtension('os-mem',
-                                                MemAttachmentController(),
-                                                parent=dict(
-                                                    member_name='server',
-                                                    collection_name='servers'))
-        resources.append(extenion)
-        return resources
+        resources = extensions.ResourceExtension('os-mem',
+                MemHotpluginController(),
+                parent=dict(
+                member_name='server',
+                collection_name='servers'))
+        return [resources]
+
+    def get_controller_extensions(self):
+        """It's an abstract function V21APIExtensionBase and the extension
+        will not be loaded without it.
+        """
+        return []

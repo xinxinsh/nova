@@ -4090,16 +4090,6 @@ class LibvirtDriver(driver.ComputeDriver):
                     guest_cell.memAccess = "shared"
                 guest_cpu_numa.cells.append(guest_cell)
             return guest_cpu_numa
-        else:
-            # default add all cpus to numa cell 0 for memory hotplugin
-            # guest_cpu_numa = vconfig.LibvirtConfigGuestCPUNUMA()
-            # guest_cell = vconfig.LibvirtConfigGuestCPUNUMACell()
-            # guest_cell.id = '0'
-            # guest_cell.cpus = range(instance.vcpus)
-            # guest_cell.memory = instance.memory_mb * units.Ki
-            # guest_cpu_numa.cells.append(guest_cell)
-            # return guest_cpu_numa
-            LOG.info(_LI('MYLOG get cpu numa'))
 
     def _has_cpu_policy_support(self):
         for ver in BAD_LIBVIRT_CPU_POLICY_VERSIONS:
@@ -4131,8 +4121,9 @@ class LibvirtDriver(driver.ComputeDriver):
 
         return False
 
-    def _get_guest_numa_config(self, instance_numa_topology, flavor, pci_devs,
-                               allowed_cpus=None, image_meta=None):
+    def _get_guest_numa_config(self, instance, instance_numa_topology,
+                               flavor, pci_devs, allowed_cpus=None,
+                               image_meta=None):
         """Returns the config objects for the guest NUMA specs.
 
         Determines the CPUs that the guest can be pinned to if the guest
@@ -4183,7 +4174,14 @@ class LibvirtDriver(driver.ComputeDriver):
             # TODO(ndipanov): Attempt to spread the instance
             # across NUMA nodes and expose the topology to the
             # instance as an optimisation
-            return GuestNumaConfig(allowed_cpus, None, None, None)
+            # default add all cpus to numa cell 0 for memory hotplugin
+            guest_cpu_numa = vconfig.LibvirtConfigGuestCPUNUMA()
+            guest_cell = vconfig.LibvirtConfigGuestCPUNUMACell()
+            guest_cell.id = '0'
+            guest_cell.cpus = range(instance.vcpus)
+            guest_cell.memory = flavor.memory_mb * units.Ki
+            guest_cpu_numa.cells.append(guest_cell)
+            return GuestNumaConfig(allowed_cpus, None, guest_cpu_numa, None)
         else:
             if topology:
                 # Now get the CpuTune configuration from the numa_topology
@@ -4724,7 +4722,7 @@ class LibvirtDriver(driver.ComputeDriver):
         allowed_cpus = hardware.get_vcpu_pin_set()
         pci_devs = pci_manager.get_instance_pci_devs(instance, 'all')
 
-        guest_numa_config = self._get_guest_numa_config(
+        guest_numa_config = self._get_guest_numa_config(instance,
             instance.numa_topology, flavor, pci_devs, allowed_cpus, image_meta)
 
         guest.cpuset = guest_numa_config.cpuset
@@ -4928,9 +4926,8 @@ class LibvirtDriver(driver.ComputeDriver):
         allowed_cpus = hardware.get_vcpu_pin_set()
         pci_devs = pci_manager.get_instance_pci_devs(instance, 'all')
 
-        guest_numa_config = self._get_guest_numa_config(
+        guest_numa_config = self._get_guest_numa_config(instance,
             instance.numa_topology, flavor, pci_devs, allowed_cpus, image_meta)
-
         guest.cpuset = guest_numa_config.cpuset
         guest.cputune = guest_numa_config.cputune
         guest.numatune = guest_numa_config.numatune
@@ -7579,7 +7576,7 @@ class LibvirtDriver(driver.ComputeDriver):
         return out
 
     def _get_last_mem_dev_from_xml(self, virt_dom):
-        xml = virt_dom.XMLDesc(0)
+        xml = virt_dom.get_xml_desc()
         tree = etree.fromstring(xml)
         for memory in tree.findall("./devices/memory[last()]"):
             if memory.get("model") == "dimm":
@@ -7600,19 +7597,19 @@ class LibvirtDriver(driver.ComputeDriver):
 
     def attach_mem(self, instance, image_meta, target_size,
                    target_node, source_pagesize, source_nodemask):
-        virt_dom = self._lookup_by_name(instance['name'])
+        guest = self._host.get_guest(instance)
         cfg = self._create_memory_device(instance, target_size, target_node,
                                          source_pagesize, source_nodemask)
         try:
             flags = libvirt.VIR_DOMAIN_AFFECT_CONFIG
-            state = LIBVIRT_POWER_STATE[virt_dom.info()[0]]
+            state = guest.get_power_state(self._host)
             if state == power_state.RUNNING or state == power_state.PAUSED:
                 flags |= libvirt.VIR_DOMAIN_AFFECT_LIVE
             # attach away return 0 so check by compare
             # with the last memory device name
-            old_last_dev = self._get_last_mem_dev_from_xml(virt_dom)
-            virt_dom.attachDeviceFlags(cfg.to_xml(), flags)
-            new_last_dev = self._get_last_mem_dev_from_xml(virt_dom)
+            old_last_dev = self._get_last_mem_dev_from_xml(guest)
+            guest.attach_device(cfg, True, True)
+            new_last_dev = self._get_last_mem_dev_from_xml(guest)
             if old_last_dev == new_last_dev:
                 raise libvirt.libvirtError
             LOG.info(_LI("attach memory hotplugin success"),
@@ -7634,15 +7631,21 @@ class LibvirtDriver(driver.ComputeDriver):
         LOG.info(_LI("mem xml:  %s "), str(cfg_mem.to_xml()))
         return cfg_mem
 
+    def _get_cur_cpu_data(self, guest):
+        cpu_cur = guest._get_domain_info(self._host)[3]
+        cpu_max = guest.maxVcpus
+        cpu_data = {"cpu_data": {"cpu_cur": cpu_cur, "cpu_max": cpu_max}}
+        return cpu_data
+
     def detach_mem(self, instance, mem_dev):
-        virt_dom = self._lookup_by_name(instance['name'])
+        guest = self._host.get_guest(instance)
         cfg_mem = self._create_memory_dev_by_obj(mem_dev)
         try:
             flags = libvirt.VIR_DOMAIN_AFFECT_CONFIG
-            state = LIBVIRT_POWER_STATE[virt_dom.info()[0]]
+            state = guest.get_power_state(self._host)
             if state == power_state.RUNNING or state == power_state.PAUSED:
                 flags |= libvirt.VIR_DOMAIN_AFFECT_LIVE
-            virt_dom.detachDeviceFlags(cfg_mem.to_xml(), flags)
+            guest.detach_device(cfg_mem, True, True)
             LOG.info(_LI("detach memory hotplugin success"),
                      instance=instance)
         except libvirt.libvirtError as ex:
@@ -7655,6 +7658,60 @@ class LibvirtDriver(driver.ComputeDriver):
                 LOG.error(_LE('detaching memory hotplugin failed.'),
                          instance=instance, exc_info=True)
                 raise exception.MemDetachFailed(
+                        instance_uuid=instance['uuid'])
+
+    def cpu_show(self, instance):
+        """Show current and max cpu from instance """
+        guest = self._host.get_guest(instance)
+        try:
+            flags = libvirt.VIR_DOMAIN_AFFECT_CONFIG
+            state = guest.get_power_state(self._host)
+            if state == power_state.RUNNING or state == power_state.PAUSED:
+                flags |= libvirt.VIR_DOMAIN_AFFECT_LIVE
+                cpu_data = self._get_cur_cpu_data(guest)
+                LOG.info(_LI("show current cpu success %s"), cpu_data,
+                         instance=instance)
+                return cpu_data
+        except libvirt.libvirtError as ex:
+            error_code = ex.get_error_code()
+            if error_code == libvirt.VIR_ERR_NO_DOMAIN:
+                LOG.warn(_LW("During show current cpu , "
+                             "instance disappeared."),
+                         instance=instance)
+            else:
+                LOG.error(_LE('show instance current cpu failed.'),
+                         instance=instance, exc_info=True)
+                raise exception.CpuShowFailed(
+                        instance_uuid=instance['uuid'])
+
+    def cpu_hotplug(self, instance, cpu_num):
+        """Hotplug vcpu to a instance """
+        guest = self._host.get_guest(instance)
+        try:
+            flags = libvirt.VIR_DOMAIN_AFFECT_CONFIG
+            state = guest.get_power_state(self._host)
+            if state == power_state.RUNNING or state == power_state.PAUSED:
+                flags |= libvirt.VIR_DOMAIN_AFFECT_LIVE
+                old_cpu_num = self.\
+                        _get_cur_cpu_data(guest)['cpu_data']['cpu_cur']
+                new_cpu_num = int(old_cpu_num) + int(cpu_num)
+                guest.setVcpus(new_cpu_num)
+                LOG.info(_LI("hot plugin add %s cpu success"), cpu_num,
+                         instance=instance)
+                cpu_data = self._get_cur_cpu_data(guest)
+                return cpu_data
+            LOG.info(_LI("hotplug vcpu to instance success"),
+                     instance=instance)
+        except libvirt.libvirtError as ex:
+            error_code = ex.get_error_code()
+            if error_code == libvirt.VIR_ERR_NO_DOMAIN:
+                LOG.warn(_LW("During hotplug vcpu , "
+                             "instance disappeared."),
+                         instance=instance)
+            else:
+                LOG.error(_LE('hotplug vcpu failed.'),
+                         instance=instance, exc_info=True)
+                raise exception.CpuHotplugFailed(
                         instance_uuid=instance['uuid'])
 
     def manage_image_cache(self, context, all_instances):

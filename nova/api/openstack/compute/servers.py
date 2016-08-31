@@ -902,6 +902,46 @@ class ServersController(wsgi.Controller):
             common.raise_http_conflict_for_instance_invalid_state(state_error,
                     'reboot', id)
 
+    @wsgi.response(202)
+    @extensions.expected_errors((404, 409))
+    @wsgi.action('cpu_hotplug')
+    # @validation.schema(schema_servers.cpu_hotplug)
+    def _action_cpu_hotplug(self, req, id, body):
+        cpu_num = body['cpu_hotplug']['cpu_num']
+        context = req.environ['nova.context']
+        authorize(context, action='cpu_hotplug')
+        instance = self._get_server(context, req, id)
+        try:
+            cpu_data = self.compute_api.cpu_hotplug(context, instance, cpu_num)
+            LOG.debug("hotplugin cpu result %s", cpu_data)
+            return cpu_data
+        except (exception.InstanceNotReady, exception.InstanceIsLocked) as e:
+            raise webob.exc.HTTPConflict(explanation=e.format_message())
+        except exception.InstanceUnknownCell as e:
+            raise exc.HTTPNotFound(explanation=e.format_message())
+        except exception.InstanceInvalidState as state_error:
+            common.raise_http_conflict_for_instance_invalid_state(state_error,
+                    'cpu_hotplug', id)
+
+    @wsgi.response(202)
+    @extensions.expected_errors((404, 409))
+    @wsgi.action('cpu_show')
+    def _action_cpu_show(self, req, id, body):
+        context = req.environ['nova.context']
+        authorize(context, action='cpu_show')
+        instance = self._get_server(context, req, id)
+        try:
+            cpu_data = self.compute_api.cpu_show(context, instance)
+            LOG.debug("show cpu %s", cpu_data)
+            return cpu_data
+        except (exception.InstanceNotReady, exception.InstanceIsLocked) as e:
+            raise webob.exc.HTTPConflict(explanation=e.format_message())
+        except exception.InstanceUnknownCell as e:
+            raise exc.HTTPConflict(explanation=e.format_message())
+        except exception.InstanceInvalidState as state_error:
+            common.raise_http_conflict_for_instance_invalid_state(state_error,
+                    'cpu_show', id)
+
     def _resize(self, req, instance_id, flavor_id, **kwargs):
         """Begin the resize process with given instance/flavor."""
         context = req.environ["nova.context"]

@@ -173,6 +173,25 @@ reboot = {
     'additionalProperties': False
 }
 
+
+cpu_hotplug = {
+    'type': 'object',
+    'properties': {
+        'cpu_hotplug': {
+            'cpu_num': {
+                'type': ['integer', 'string'],
+                'pattern': '^[1-9]+$',
+                'minLength': 1,
+            },
+            'required': ['cpu_num'],
+            'additionalProperties': False
+        }
+    },
+    'required': ['cpu_hotplug'],
+    'additionalProperties': False
+}
+
+
 trigger_crash_dump = {
     'type': 'object',
     'properties': {

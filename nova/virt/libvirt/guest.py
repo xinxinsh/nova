@@ -105,6 +105,10 @@ class Guest(object):
         return self._domain.name()
 
     @property
+    def maxVcpus(self):
+        return self._domain.maxVcpus()
+
+    @property
     def _encoded_xml(self):
         return encodeutils.safe_decode(self._domain.XMLDesc(0))
 
@@ -386,6 +390,10 @@ class Guest(object):
     def set_user_password(self, user, new_pass):
         """Configures a new user password."""
         self._domain.setUserPassword(user, new_pass, 0)
+
+    def setVcpus(self, cpu_num):
+        """"Set vcpu to hotplug from instance """
+        self._domain.setVcpus(cpu_num)
 
     def _get_domain_info(self, host):
         """Returns information on Guest

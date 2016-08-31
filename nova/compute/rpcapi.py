@@ -453,7 +453,7 @@ class ComputeAPI(object):
 
     def attach_mem(self, ctxt, instance, target_size, target_node,
                    source_pagesize, source_nodemask):
-        version = '3.37'
+        version = '4.0'
         cctxt = self.client.prepare(server=_compute_host(None, instance),
                 version=version)
         return cctxt.call(ctxt, 'attach_mem',
@@ -463,7 +463,7 @@ class ComputeAPI(object):
                           source_nodemask=source_nodemask)
 
     def detach_mem(self, ctxt, instance, mem_dev):
-        version = '3.37'
+        version = '4.0'
         cctxt = self.client.prepare(server=_compute_host(None, instance),
                 version=version)
         cctxt.cast(ctxt, 'detach_mem',
@@ -785,6 +785,19 @@ class ComputeAPI(object):
                    instance=instance,
                    block_device_info=block_device_info,
                    reboot_type=reboot_type)
+
+    def cpu_hotplug(self, ctxt, instance, cpu_num):
+        version = '4.0'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                version=version)
+        return cctxt.call(ctxt, 'cpu_hotplug',
+                   instance=instance, cpu_num=cpu_num)
+
+    def cpu_show(self, ctxt, instance):
+        version = '4.0'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                version=version)
+        return cctxt.call(ctxt, 'cpu_show', instance=instance)
 
     def rebuild_instance(self, ctxt, instance, new_pass, injected_files,
             image_ref, orig_image_ref, orig_sys_metadata, bdms,

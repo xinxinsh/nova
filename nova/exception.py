@@ -2170,3 +2170,32 @@ class BandwidthNotFound(NotFound):
 
 class SetInterfaceBandwidthFailed(NovaException):
     msg_fmt = _("Failed to set network interface for instance %(instance)s")
+
+
+class MemAttachFailed(Invalid):
+    msg_fmt = _("Failed to attach memory hotplugin device to "
+                "%(instance_uuid)s")
+
+
+class MemDetachFailed(Invalid):
+    msg_fmt = _("Failed to detach memory hotplugin device from "
+                "%(instance_uuid)s")
+
+
+class MemNotFound(NotFound):
+    msg_fmt = _("Memory name %(mem_name)s could not be found.")
+
+
+class MemNotFoundForInstance(MemNotFound):
+    msg_fmt = _("Memory %(mem_name)s could not be found for instance "
+                "%(instance_uuid)s.")
+
+
+class CpuHotplugFailed(Invalid):
+    msg_fmt = _("Failed to hotplugin cpu device to "
+                "%(instance_uuid)s")
+
+
+class CpuShowFailed(Invalid):
+    msg_fmt = _("Failed to show cpu data to "
+                "%(instance_uuid)s")

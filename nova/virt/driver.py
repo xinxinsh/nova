@@ -549,6 +549,21 @@ class ComputeDriver(object):
         """
         raise NotImplementedError()
 
+    def cpu_show(self, instance):
+        """Show current and max vcpu from the instance.
+
+        :param instance: nova.objects.instance.Instance
+        """
+        raise NotImplementedError()
+
+    def cpu_hotplug(self, instance, cpu_num):
+        """Hotplug vcpu to the instance.
+
+        :param instance: nova.objects.instance.Instance
+        :param cpu_num: the add vcpu num
+        """
+        raise NotImplementedError()
+
     def migrate_disk_and_power_off(self, context, instance, dest,
                                    flavor, network_info,
                                    block_device_info=None,

@@ -2044,9 +2044,12 @@ class LibvirtConfigGuest(LibvirtConfigObject):
         if self.cpuset is not None:
             vcpu = self._text_node("vcpu", self.vcpus)
             vcpu.set("cpuset", hardware.format_cpu_spec(self.cpuset))
+            # vcpu.set("current", "1")
             root.append(vcpu)
         else:
-            root.append(self._text_node("vcpu", self.vcpus))
+            vcpu = self._text_node("vcpu", self.vcpus)
+            # vcpu.set("current", "1")
+            root.append(vcpu)
 
         if len(self.metadata) > 0:
             metadata = etree.Element("metadata")
