@@ -1335,10 +1335,14 @@ class GetServersInfoController(wsgi.Controller):
 
         servers_info = []
         for s in servers:
-            instance = common.get_instance(self.compute_api, context,
-                                           s['server_id'])
-
-            servers_info.append(instance)
+            try:
+                instance = self.compute_api.get(context, s['server_id'],
+                                                want_objects=True,
+                                                expected_attrs=None)
+            except exception.InstanceNotFound as e:
+                LOG.error(e.format_message())
+            else:
+                servers_info.append(instance)
 
         return {"servers_info": servers_info}
 
