@@ -2217,6 +2217,260 @@ class LibvirtDriver(driver.ComputeDriver):
         timer = loopingcall.FixedIntervalLoopingCall(_wait_for_snapshot)
         timer.start(interval=0.5).wait()
 
+    def _echo_scsi_command(self, path, content):
+        """Used to echo strings to scsi subsystem."""
+
+        args = ["-a", path]
+        kwargs = dict(process_input=content,
+                      run_as_root=True)
+        utils.execute('tee', *args, **kwargs)
+
+    def _get_device_info(self, device):
+        (out, _err) = utils.execute('sg_scan', device,
+                                    run_as_root=True)
+        dev_info = {'device': device, 'host': None,
+                    'channel': None, 'id': None, 'lun': None}
+
+        if out:
+            line = out.strip()
+            line = line.replace(device + ": ", "")
+            info = line.split(" ")
+
+            for item in info:
+                if '=' in item:
+                    pair = item.split('=')
+                    dev_info[pair[0]] = pair[1]
+                elif 'scsi' in item:
+                    dev_info['host'] = item.replace('scsi', '')
+
+        return dev_info
+
+    def _multipath_resize_map(self, mpath_id):
+        """Issue a multipath resize map on device.
+
+        This forces the multipath daemon to update it's
+        size information a particular multipath device.
+        """
+        (out, _err) = utils.execute('multipathd', 'resize', 'map', mpath_id,
+                                    run_as_root=True)
+        return out
+
+    def _get_scsi_wwn(self, path):
+        """Read the WWN from page 0x83 value for a SCSI device."""
+
+        (out, _err) = utils.execute('scsi_id', '--page', '0x83',
+                                    '--whitelisted', path,
+                                    run_as_root=True)
+        return out.strip()
+
+    def _get_device_size(self, device):
+        """Get the size in bytes of a volume."""
+
+        root_helper = utils.get_root_helper()
+        (out, _err) = utils.execute('blockdev', '--getsize64',
+                                    device, run_as_root=True,
+                                    root_helper=root_helper)
+
+    def _get_fc_hbas(self):
+        """Get the Fibre Channel HBA information."""
+        out = None
+        try:
+            root_helper = utils.get_root_helper()
+            out, _err = utils.execute('systool', '-c', 'fc_host', '-v',
+                                      run_as_root=True,
+                                      root_helper=root_helper)
+        except processutils.ProcessExecutionError as exc:
+            if exc.exit_code == 96:
+                LOG.warning(_LW("systool is not installed"))
+            return []
+        except OSError as exc:
+            if exc.errno == errno.ENOENT:
+                LOG.warning(_LW("systool is not installed"))
+            return []
+
+        # No FC HBAs were found
+        if out is None:
+            return []
+
+        lines = out.split('\n')
+        # ignore the first 2 lines
+        lines = lines[2:]
+        hbas = []
+        hba = {}
+        lastline = None
+        for line in lines:
+            line = line.strip()
+            # 2 newlines denotes a new hba port
+            if line == '' and lastline == '':
+                if len(hba) > 0:
+                    hbas.append(hba)
+                    hba = {}
+            else:
+                val = line.split('=')
+                if len(val) == 2:
+                    key = val[0].strip().replace(" ", "")
+                    value = val[1].strip()
+                    hba[key] = value.replace('"', '')
+            lastline = line
+
+        return hbas
+
+    def _get_pci_num(self, hba):
+        if hba is not None:
+            if "device_path" in hba:
+                device_path = hba['device_path'].split('/')
+                for index, value in enumerate(device_path):
+                    if value.startswith('net') or value.startswith('host'):
+                        return device_path[index - 1]
+        return None
+
+    def _format_lun_id(self, lun_id):
+        if lun_id < 256:
+            return lun_id
+        else:
+            return ("0x%04x%04x00000000" %
+                    (lun_id & 0xffff, lun_id >> 16 & 0xffff))
+
+    def _process_lun_id(self, lun_ids):
+        if isinstance(lun_ids, list):
+            processed = []
+            for x in lun_ids:
+                x = self._format_lun_id(x)
+                processed.appen(x)
+        else:
+            processed = self._format_lun_id(lun_ids)
+        return processed
+
+    def _get_host_devices(self, possible_devs, lun):
+        host_devices = []
+        for pci_num, target_wwn in possible_devs:
+            host_device = "/dev/disk/by-path/pci-%s-fc-%s-lun-%s" % (
+                pci_num,
+                target_wwn,
+                self._process_lun_id(lun))
+            host_devices.append(host_device)
+        return host_devices
+
+    def _get_possible_devices(self, hbas, wwnports):
+        """Compute the possible fibre channel device options."""
+
+        wwns = []
+        if isinstance(wwnports, list):
+            for wwn in wwnports:
+                wwns.append(str(wwn))
+        elif isinstance(wwnports, six.string_types):
+            wwns.append(str(wwnports))
+
+        raw_devices = []
+        for hba in hbas:
+            pci_num = self._get_pci_num(hba)
+            if pci_num is not None:
+                for wwn in wwns:
+                    target_wwn = "0x%s" % wwn.lower()
+                    raw_devices.append((pci_num, target_wwn))
+        return raw_devices
+
+    def _get_possible_volume_paths(self, connection_properties, hbas):
+        ports = connection_properties['target_wwn']
+        possible_devs = self._get_possible_devices(hbas, ports)
+
+        lun = connection_properties.get('target_lun', 0)
+        host_paths = self._get_host_devices(possible_devs, lun)
+        return host_paths
+
+    def _get_fc_hbas_info(self):
+        """Get Fibre Channel WWNs and device paths from the system, if any."""
+
+        hbas = self._get_fc_hbas()
+        if not hbas:
+            return []
+
+        hbas_info = []
+        for hba in hbas:
+            wwpn = hba['port_name'].replace('0x', '')
+            wwnn = hba['node_name'].replace('0x', '')
+            device_path = hba['ClassDevicepath']
+            device = hba['ClassDevice']
+            hbas_info.append({'port_name': wwpn,
+                              'node_name': wwnn,
+                              'host_device': device,
+                              'device_path': device_path})
+        return hbas_info
+
+    def _get_volume_paths(self, connection_properties):
+        volume_paths = []
+        # first fetch all of the potential paths that might exist
+        # how the FC fabric is zoned may alter the actual list
+        # that shows up on the system. So, we verify each path.
+        hbas = self._get_fc_hbas_info()
+        device_paths = self._get_possible_volume_paths(
+            connection_properties, hbas)
+        for path in device_paths:
+            if os.path.exists(path):
+                volume_paths.append(path)
+
+        return volume_paths
+
+    def _rescan_fc_volume(self, connection_properties):
+        """Rescan fc disks before call blockResize."""
+
+        volume_paths = self._get_volume_paths(connection_properties)
+        if not volume_paths:
+            LOG.warning(_LW("Couldn't find any volume paths on the host to "
+                            "extend volume for %(props)s"),
+                        {'props': connection_properties})
+            raise exception.VolumePathsNotFound()
+
+        LOG.debug("extend volume %s", volume_paths)
+
+        for volume_path in volume_paths:
+            device = self._get_device_info(volume_path)
+            LOG.debug("Volume device info = %s", device)
+            device_id = ("%(host)s:%(channel)s:%(id)s:%(lun)s" %
+                         {'host': device['host'],
+                          'channel': device['channel'],
+                          'id': device['id'],
+                          'lun': device['lun']})
+
+            scsi_path = ("/sys/bus/scsi/drivers/sd/%(device_id)s" %
+                         {'device_id': device_id})
+
+            size = self._get_device_size(volume_path)
+            LOG.debug("Starting size: %s", size)
+
+            # Now issue the device rescan
+            rescan_path = "%(scsi_path)s/rescan" % {'scsi_path': scsi_path}
+            self._echo_scsi_command(rescan_path, "1")
+
+            new_size = self._get_device_size(volume_path)
+            LOG.debug("volume size after scsi device rescan %s", new_size)
+
+        if CONF.libvirt.iscsi_use_multipath:
+            mpath_device = connection_properties['device_path']
+
+            # Force a reconfigure so that resize works
+            root_helper = utils.get_root_helper()
+            utils.execute('multipathd', 'reconfigure',
+                          run_as_root=True,
+                          root_helper=root_helper)
+
+            size = self._get_device_size(mpath_device)
+            LOG.info(_LI("mpath(%(device)s) current size %(size)s"),
+                     {'device': mpath_device, 'size': size})
+
+            scsi_wwn = self._get_scsi_wwn(mpath_device)
+            result = self._multipath_resize_map(scsi_wwn)
+            if 'fail' in result:
+                msg = (_LI("Multipathd failed to update the size mapping of "
+                           "multipath device %(scsi_wwn)s volume %(volume)s") %
+                       {'scsi_wwn': scsi_wwn, 'volume': volume_paths})
+                LOG.error(msg)
+                return None
+
+            new_size = self._get_device_size(mpath_device)
+            LOG.info(_LI("mpath(%(device)s) new size %(size)s"),
+                     {'device': mpath_device, 'size': new_size})
+
     def volume_online_extend(self, context, instance, mountpoint,
                              volume_id, extend_info):
         LOG.debug("volume_online_extend: extend_info: %(e_info)s",
@@ -2227,14 +2481,21 @@ class LibvirtDriver(driver.ComputeDriver):
         except exception.InstanceNotFound:
             raise exception.InstanceNotFound(instance_id=instance.uuid)
 
-        if extend_info['type'] not in ['rbd', 'qcow2']:
+        if extend_info['type'] not in ['rbd', 'qcow2', 'fc']:
             raise exception.NovaException(_('Unknow tppe: %s') %
                                           extend_info['type'])
 
         resize_to = extend_info['new_size']
+        disk_dev = mountpoint.rpartition("/")[2]
+
+        if extend_info['type'] == 'fc':
+            bdm = objects.BlockDeviceMapping.get_by_volume_and_instance(
+                context, volume_id, instance.uuid)
+            connection_properties = jsonutils.loads(
+                bdm.connection_info)['data']
+            self._rescan_fc_volume(connection_properties)
 
         try:
-            disk_dev = mountpoint.rpartition("/")[2]
             if not guest.get_disk(disk_dev):
                 raise exception.DiskNotFound(location=disk_dev)
 

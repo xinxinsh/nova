@@ -25,7 +25,7 @@ volume_extend = {
                     'type': 'object',
                     'properties': {
                         'type': {
-                            'type': 'string', 'enum': ['qcow2', 'rbd'],
+                            'type': 'string', 'enum': ['qcow2', 'rbd', 'fc'],
                         },
                         'new_size': {
                             'type': ['integer', 'string'],
