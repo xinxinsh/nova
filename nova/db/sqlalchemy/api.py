@@ -7362,3 +7362,61 @@ def ext_image_file_update(context, id, values):
 def ext_image_file_destroy(context, id):
     return model_query(context, models.ExtImageFile).\
             filter_by(id=id).soft_delete()
+
+
+#############################
+
+
+@require_context
+@main_context_manager.reader
+def USBAccessManagement_get(context, usb_pid, usb_vid):
+    result = model_query(context, models.UsbAccessInfo).\
+           filter_by(usb_pid=usb_pid, usb_vid=usb_vid).first()
+    usb_info = dict()
+    usb_info['project_id'] = result.project_id
+    usb_info['usb_vid'] = usb_vid
+    usb_info['usb_pid'] = usb_pid
+    return usb_info
+
+
+@require_context
+@main_context_manager.writer
+def USBAccessManagement_add(context, usb_pid, usb_vid, project_id):
+    result = model_query(context, models.UsbAccessInfo).\
+        filter_by(usb_pid=usb_pid, usb_vid=usb_vid).first()
+    if not result:
+        usb_ref = models.UsbAccessInfo()
+        usb_ref.update({"usb_pid": usb_pid, "usb_vid": usb_vid,
+                        "project_id": project_id})
+        context.session.add(usb_ref)
+    else:
+        project_ids = result.project_id
+        project_ids_list = project_ids.split(',')
+        project_id_list = project_id.split(',')
+        for item in project_id_list:
+            if item not in project_ids_list:
+                project_ids_list.append(item)
+        project_ids = ','.join(project_ids_list)
+        model_query(context, models.UsbAccessInfo).\
+            filter_by(usb_pid=usb_pid, usb_vid=usb_vid).\
+            update({"project_id": project_ids})
+
+
+@require_context
+@main_context_manager.writer
+def USBAccessManagement_delete(context, usb_pid, usb_vid, project_id):
+    result = model_query(context, models.UsbAccessInfo).\
+           filter_by(usb_pid=usb_pid, usb_vid=usb_vid).first()
+    if result:
+        project_ids = result.project_id
+        project_ids_list = project_ids.split(',')
+        project_id_list = project_id.split(',')
+        for item in project_id_list:
+            if item in project_ids_list:
+                project_ids_list.remove(item)
+        project_ids = ','.join(project_ids_list)
+        model_query(context, models.UsbAccessInfo).\
+            filter_by(usb_pid=usb_pid, usb_vid=usb_vid).\
+            update({"usb_pid": usb_pid,
+                    "usb_vid": usb_vid,
+                    "project_id": project_ids})

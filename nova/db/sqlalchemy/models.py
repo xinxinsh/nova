@@ -1684,3 +1684,13 @@ class ExtVolume(BASE, NovaBase):
                             primaryjoin='and_('
                                 'ExtVolume.qos_id == ExtQos.id,'
                                 'ExtVolume.deleted == 0)')
+
+
+#############################
+
+
+class UsbAccessInfo(BASE, NovaBase, models.SoftDeleteMixin):
+    __tablename__ = 'usb_access_management'
+    usb_pid = Column(String(255), primary_key=True)
+    usb_vid = Column(String(255), primary_key=True)
+    project_id = Column(String(255))

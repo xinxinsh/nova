@@ -2233,3 +2233,20 @@ def ext_qos_update(context, id, values):
 
 def ext_qos_destroy(context, id):
     return IMPL.ext_qos_destroy(context, id)
+
+
+###################
+
+
+def USBAccessManagement_get(context, usb_pid, usb_vid):
+    return IMPL.USBAccessManagement_get(context, usb_pid, usb_vid)
+
+
+def USBAccessManagement_add(context, usb_pid, usb_vid, project_id):
+    return IMPL.USBAccessManagement_add(context, usb_pid,
+                                        usb_vid, project_id)
+
+
+def USBAccessManagement_delete(context, usb_pid, usb_vid, project_id):
+    return IMPL.USBAccessManagement_delete(context, usb_pid,
+                                           usb_vid, project_id)

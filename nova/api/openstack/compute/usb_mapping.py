@@ -19,6 +19,7 @@ from nova.api.openstack import wsgi
 from nova import compute
 from nova.compute import power_state
 from nova.compute import vm_states
+from nova import db
 from nova import exception
 from nova.i18n import _
 from oslo_log import log as logging
@@ -428,6 +429,49 @@ class UsbMappingController(wsgi.Controller):
 
         return {'usb_status': status}
 
+    def list_usb_project(self, req, body):
+        context = req.environ['nova.context']
+        authorize(context)
+
+        list_usb_project = body.get("list_usb_project")
+        usb_pid = list_usb_project.get("usb_pid")
+        usb_vid = list_usb_project.get("usb_vid")
+        result = db.USBAccessManagement_get(context, usb_pid, usb_vid)
+        return result
+
+    def usb_add_project(self, req, body):
+        """"""
+        context = req.environ['nova.context']
+        authorize(context)
+
+        usb_add = body.get("usb_add")
+        usb_pid = usb_add.get("usb_pid")
+        usb_vid = usb_add.get("usb_vid")
+        project_id = usb_add.get("project_id")
+        try:
+            db.USBAccessManagement_add(context, usb_pid, usb_vid, project_id)
+        except Exception:
+            msg = _("Failed to insert data to database")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+    def usb_delete_project(self, req, body):
+        """"""
+        context = req.environ['nova.context']
+        authorize(context)
+
+        usb_delete = body.get("usb_delete")
+        usb_pid = usb_delete.get("usb_pid")
+        usb_vid = usb_delete.get("usb_vid")
+        project_id = usb_delete.get("project_id")
+        try:
+            db.USBAccessManagement_delete(context,
+                                          usb_pid,
+                                          usb_vid,
+                                          project_id)
+        except Exception:
+            msg = _("Failed to delete data from database")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
 
 class UsbMapping(extensions.V21APIExtensionBase):
     """Usb actions between hosts and instances"""
@@ -440,7 +484,10 @@ class UsbMapping(extensions.V21APIExtensionBase):
         actions = {'usb_shared': 'POST',
                    'usb_mapped': 'POST',
                    'usb_mounted': 'POST',
-                   "usb_status": 'POST'}
+                   "usb_status": 'POST',
+                   "list_usb_project": 'POST',
+                   "usb_add_project": 'POST',
+                   "usb_delete_project": 'POST'}
         resources = extensions.ResourceExtension(ALIAS,
                                                  UsbMappingController(),
                                                  collection_actions=actions)
