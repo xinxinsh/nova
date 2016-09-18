@@ -1256,6 +1256,19 @@ class ComputeAPI(object):
                           instance=instance,
                           image_meta=image_meta)
 
+    def rollback_to_snapshot(self, ctxt, instance, image_meta,
+                             is_rollback_memory, auto_start,
+                             rollback_snapshot_list):
+        version = '4.6'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                                    version=version)
+        return cctxt.cast(ctxt, 'rollback_to_snapshot',
+                          instance=instance,
+                          image_meta=image_meta,
+                          is_rollback_memory=is_rollback_memory,
+                          auto_start=auto_start,
+                          rollback_snapshot_list=rollback_snapshot_list)
+
     def set_interface_bandwidth(self, ctxt, instance, port_id,
                                 inbound_kilo_bytes, outbound_kilo_bytes):
         version = '4.6'

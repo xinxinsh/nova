@@ -3969,6 +3969,17 @@ class API(base.Base):
                                                         instance,
                                                         image_meta)
 
+    @check_instance_state(vm_state=[vm_states.STOPPED])
+    def rollback_to_snapshot(self, context, instance, image_meta,
+                             is_rollback_memory, auto_start,
+                             rollback_snapshot_list):
+        self.compute_rpcapi.rollback_to_snapshot(context,
+                                                 instance,
+                                                 image_meta,
+                                                 is_rollback_memory,
+                                                 auto_start,
+                                                 rollback_snapshot_list)
+
     @wrap_check_policy
     @check_instance_lock
     @check_instance_cell

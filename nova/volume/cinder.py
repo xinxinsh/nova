@@ -600,3 +600,10 @@ class API(object):
     def get_backup_size(self, context, backup_id):
         vs = cinderclient(context).backups
         return vs.get_backup_size(backup_id)
+
+    @translate_snapshot_exception
+    def snapshot_rollback(self, context, snapshot_id):
+        roll_back_path = '/snapshots/%s/action' % snapshot_id
+        body = {"os-rollback_to_snapshot": {}}
+        snapshot = cinderclient(context).client.post(roll_back_path, body=body)
+        return snapshot
