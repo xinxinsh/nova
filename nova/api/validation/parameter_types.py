@@ -347,3 +347,8 @@ ipv6 = {
 cidr = {
     'type': 'string', 'format': 'cidr'
 }
+
+
+force_host = {
+    'type': ['string', 'integer', None],
+}
