@@ -2336,7 +2336,7 @@ class LibvirtDriver(driver.ComputeDriver):
             processed = []
             for x in lun_ids:
                 x = self._format_lun_id(x)
-                processed.appen(x)
+                processed.append(x)
         else:
             processed = self._format_lun_id(lun_ids)
         return processed
