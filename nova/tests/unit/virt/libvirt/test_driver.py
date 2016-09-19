@@ -16079,7 +16079,7 @@ class LibvirtVolumeSnapshotTestCase(test.NoDBTestCase):
         self.drvr._host.has_min_version(mox.IgnoreArg()).AndReturn(True)
 
         domain.blockRebase('vda', 'snap.img', 0,
-                           flags=fakelibvirt.VIR_DOMAIN_BLOCK_REBASE_RELATIVE)
+                           flags=0)
 
         domain.blockJobInfo('vda', flags=0).AndReturn({'cur': 1, 'end': 1000})
         domain.blockJobInfo('vda', flags=0).AndReturn(
@@ -16476,7 +16476,7 @@ class LibvirtVolumeSnapshotTestCase(test.NoDBTestCase):
         self.drvr._host.has_min_version(mox.IgnoreArg()).AndReturn(True)
 
         domain.blockRebase('vdb', 'vdb[1]', 0,
-                           flags=fakelibvirt.VIR_DOMAIN_BLOCK_REBASE_RELATIVE)
+                           flags=0)
 
         domain.blockJobInfo('vdb', flags=0).AndReturn({'cur': 1, 'end': 1000})
         domain.blockJobInfo('vdb', flags=0).AndReturn(
