@@ -179,9 +179,13 @@ class InstanceMetadata(object):
         # (personalities) in. AFAIK they're not stored in the db at all,
         # so are not available later (web service metadata time).
         for (path, contents) in content:
-            key = "%04i" % len(self.content)
+            # key = "%04i" % len(self.content)
+            # self.files.append({'path': path,
+            #     'content_path': "/%s/%s" % (CONTENT_DIR, key)})
+            # chinac change inject file default path to path in configdriver
+            key = path
             self.files.append({'path': path,
-                'content_path': "/%s/%s" % (CONTENT_DIR, key)})
+                'content_path': key})
             self.content[key] = contents
 
         if vd_driver is None:
@@ -466,7 +470,6 @@ class InstanceMetadata(object):
 
             filepath = os.path.join('ec2', version, 'meta-data.json')
             yield (filepath, jsonutils.dump_as_bytes(data['meta-data']))
-
         ALL_OPENSTACK_VERSIONS = OPENSTACK_VERSIONS + ["latest"]
         for version in ALL_OPENSTACK_VERSIONS:
             path = 'openstack/%s/%s' % (version, MD_JSON_NAME)
@@ -485,7 +488,9 @@ class InstanceMetadata(object):
                 yield (path, self.lookup(path))
 
         for (cid, content) in six.iteritems(self.content):
-            yield ('%s/%s/%s' % ("openstack", CONTENT_DIR, cid), content)
+            # yield ('%s/%s/%s' % ("openstack", CONTENT_DIR, cid), content)
+            # chinac change content default patch to api set path
+            yield ('%s' % cid.lstrip('/'), content)
 
 
 class RouteConfiguration(object):
