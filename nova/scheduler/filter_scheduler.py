@@ -74,6 +74,7 @@ class FilterScheduler(driver.Scheduler):
             raise exception.NoValidHost(reason=reason)
 
         dests = [dict(host=host.obj.host, nodename=host.obj.nodename,
+                      free_ram_mb=host.obj.free_ram_mb,
                       limits=host.obj.limits) for host in selected_hosts]
 
         self.notifier.info(

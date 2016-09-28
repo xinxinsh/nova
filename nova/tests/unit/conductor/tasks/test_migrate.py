@@ -40,7 +40,9 @@ class MigrationTaskTestCase(test.NoDBTestCase):
                                  obj_base.obj_to_primitive(self.flavor),
                              'instance_properties': {},
                              'image': 'image'}
-        self.hosts = [dict(host='host1', nodename=None, limits={})]
+        self.hosts = [dict(host='host1', nodename=None,
+                           free_ram_mb=99999999999,
+                           limits={})]
         self.filter_properties = {'limits': {}, 'retry': {'num_attempts': 1,
                                   'hosts': [['host1', None]]}}
         self.reservations = []
