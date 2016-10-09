@@ -3779,32 +3779,26 @@ class API(base.Base):
             host_statuses[instance.uuid] = host_status
         return host_statuses
 
-    @wrap_check_policy
     def get_usb_host_list(self, context, host):
         return self.compute_rpcapi.get_usb_host_list(context, host)
 
-    @wrap_check_policy
     def get_usb_vm_status(self, context, host, usb_vid, usb_pid):
         return self.compute_rpcapi.get_usb_vm_status(context, host,
                                                      usb_vid, usb_pid)
 
-    @wrap_check_policy
     def usb_shared(self, context, host, usb_vid, usb_pid, usb_port, shared):
         self.compute_rpcapi.usb_shared(context, host, usb_vid,
                                        usb_pid, usb_port, shared)
 
-    @wrap_check_policy
     def usb_mapped(self, context, src_host_name, dst_host_name,
                    usb_vid, usb_pid, usb_port, mapped):
         self.compute_rpcapi.usb_mapped(context, src_host_name, dst_host_name,
                                        usb_vid, usb_pid, usb_port, mapped)
 
-    @wrap_check_policy
     def usb_mounted(self, context, instance, host, usb_vid, usb_pid, mounted):
         self.compute_rpcapi.usb_mounted(context, instance,
                                         host, usb_vid, usb_pid, mounted)
 
-    @wrap_check_policy
     def usb_status(self, context, instance, host, usb_vid, usb_pid):
         return self.compute_rpcapi.usb_status(context, instance,
                                               host, usb_vid, usb_pid)
