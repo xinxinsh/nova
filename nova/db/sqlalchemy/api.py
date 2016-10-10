@@ -7373,7 +7373,7 @@ def USBAccessManagement_get(context, usb_pid, usb_vid):
     result = model_query(context, models.UsbAccessInfo).\
            filter_by(usb_pid=usb_pid, usb_vid=usb_vid).first()
     usb_info = dict()
-    usb_info['project_id'] = result.project_id
+    usb_info['project_id'] = result.project_id if result else ''
     usb_info['usb_vid'] = usb_vid
     usb_info['usb_pid'] = usb_pid
     return usb_info
@@ -7390,16 +7390,9 @@ def USBAccessManagement_add(context, usb_pid, usb_vid, project_id):
                         "project_id": project_id})
         context.session.add(usb_ref)
     else:
-        project_ids = result.project_id
-        project_ids_list = project_ids.split(',')
-        project_id_list = project_id.split(',')
-        for item in project_id_list:
-            if item not in project_ids_list:
-                project_ids_list.append(item)
-        project_ids = ','.join(project_ids_list)
         model_query(context, models.UsbAccessInfo).\
             filter_by(usb_pid=usb_pid, usb_vid=usb_vid).\
-            update({"project_id": project_ids})
+            update({"project_id": project_id})
 
 
 @require_context
