@@ -3198,7 +3198,7 @@ class ComputeManager(manager.Manager):
                                  update_task_state)
 
             instance.task_state = None
-            instance.save(expected_task_state=task_states.IMAGE_UPLOADING)
+            instance.save()
 
             self._notify_about_instance_usage(context, instance,
                                               "snapshot.end")
