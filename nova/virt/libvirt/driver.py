@@ -58,6 +58,7 @@ from oslo_utils import units
 import six
 from six.moves import range
 
+from nova.api.metadata import base as instance_metadata
 from nova import block_device
 from nova.compute import arch
 from nova.compute import cpumodel
@@ -3174,10 +3175,6 @@ class LibvirtDriver(driver.ComputeDriver):
                                             image_meta,
                                             block_device_info)
 
-        # Note remove disk.config if injected_files is empty
-        if 'disk.config' in disk_info['mapping'] and not injected_files:
-            del disk_info['mapping']['disk.config']
-
         self._create_image(context, instance,
                            disk_info['mapping'],
                            network_info=network_info,
@@ -3668,22 +3665,19 @@ class LibvirtDriver(driver.ComputeDriver):
                                          swap_mb=swap_mb)
 
         # Config drive
-        if inject_files and files and configdrive.required_by(instance):
+        if configdrive.required_by(instance):
             LOG.info(_LI('Using config drive'), instance=instance)
             extra_md = {}
             if admin_pass:
                 extra_md['admin_pass'] = admin_pass
 
-            # inst_md = instance_metadata.InstanceMetadata(instance,
-            #    content=files, extra_md=extra_md, network_info=network_info)
-            with configdrive.ConfigDriveBuilder(instance_md=None) as cdb:
+            inst_md = instance_metadata.InstanceMetadata(instance,
+                content=files, extra_md=extra_md, network_info=network_info)
+            with configdrive.ConfigDriveBuilder(instance_md=inst_md) as cdb:
                 configdrive_path = self._get_disk_config_path(instance, suffix)
                 LOG.info(_LI('Creating config drive at %(path)s'),
                          {'path': configdrive_path}, instance=instance)
-                cdb.mdfiles = files
                 try:
-                    if os.path.exists(configdrive_path):
-                        libvirt_utils.chown(configdrive_path, os.getuid())
                     cdb.make_drive(configdrive_path)
                 except processutils.ProcessExecutionError as e:
                     with excutils.save_and_reraise_exception():
@@ -4071,17 +4065,10 @@ class LibvirtDriver(driver.ComputeDriver):
                         block_device.prepend_dev(diskswap.target_dev))
 
             if 'disk.config' in disk_mapping:
-                config_path = os.path.join(
-                    libvirt_utils.get_instance_path(instance), 'disk.config')
-                # Append disk.config only if config_path existed
-                if os.path.exists(config_path):
-                    diskconfig = self._get_guest_disk_config(
-                        instance,
-                        'disk.config',
-                        disk_mapping,
-                        inst_type,
+                diskconfig = self._get_guest_disk_config(
+                        instance, 'disk.config', disk_mapping, inst_type,
                         self._get_disk_config_image_type())
-                    devices.append(diskconfig)
+                devices.append(diskconfig)
 
         for vol in block_device.get_bdms_to_connect(block_device_mapping,
                                                    mount_rootfs):
@@ -7655,33 +7642,24 @@ class LibvirtDriver(driver.ComputeDriver):
         disk_info = []
         doc = etree.fromstring(xml)
         disk_nodes = doc.findall('.//devices/disk')
+        path_nodes = doc.findall('.//devices/disk/source')
+        driver_nodes = doc.findall('.//devices/disk/driver')
+        target_nodes = doc.findall('.//devices/disk/target')
 
-        for d in disk_nodes:
-            disk_type = d.get('type')
-            device_type = d.get('device')
-
-            path_node = d.find('source')
-            if path_node is None:
-                continue
+        for cnt, path_node in enumerate(path_nodes):
+            disk_type = disk_nodes[cnt].get('type')
             path = path_node.get('file') or path_node.get('dev')
+            target = target_nodes[cnt].attrib['dev']
 
             if not path:
                 LOG.debug('skipping disk for %s as it does not have a path',
                           instance_name)
                 continue
 
-            if device_type == 'cdrom':
-                LOG.debug('skipping cdrom %s' % path)
-                continue
-
             if disk_type not in ['file', 'block']:
                 LOG.debug('skipping disk because it looks like a volume', path)
                 continue
 
-            target_node = d.find('target')
-            if target_node is None:
-                continue
-            target = target_node.get('dev')
             if target in volume_devices:
                 LOG.debug('skipping disk %(path)s (%(target)s) as it is a '
                           'volume', {'path': path, 'target': target})
@@ -7699,7 +7677,7 @@ class LibvirtDriver(driver.ComputeDriver):
                           {'path': path, 'target': target})
                 continue
 
-            disk_type = d.find('driver').get('type')
+            disk_type = driver_nodes[cnt].get('type')
             if disk_type == "qcow2":
                 backing_file = libvirt_utils.get_disk_backing_file(path)
                 virt_size = disk.get_disk_size(path)

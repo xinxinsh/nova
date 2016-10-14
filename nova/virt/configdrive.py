@@ -70,7 +70,7 @@ class ConfigDriveBuilder(object):
         self.cleanup()
 
     def _add_file(self, basedir, path, data):
-        filepath = os.path.join(basedir, path.lstrip('/'))
+        filepath = os.path.join(basedir, path)
         dirname = os.path.dirname(filepath)
         fileutils.ensure_tree(dirname)
         with open(filepath, 'wb') as f:
