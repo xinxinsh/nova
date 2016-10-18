@@ -25,25 +25,62 @@ class TestAggregateInstanceExtraSpecsFilter(test.NoDBTestCase):
         super(TestAggregateInstanceExtraSpecsFilter, self).setUp()
         self.filt_cls = agg_specs.AggregateInstanceExtraSpecsFilter()
 
-    def test_aggregate_filter_passes_no_extra_specs(self, agg_mock):
+    def _do_test_aggregate_filter_and_meta(self, agg_meta,
+                                           passes, agg_mock):
         capabilities = {'opt1': 1, 'opt2': 2}
-
+        # get aggregate metadata
+        agg_mock.return_value = agg_meta
         spec_obj = objects.RequestSpec(
             context=mock.sentinel.ctx,
             flavor=objects.Flavor(memory_mb=1024))
         host = fakes.FakeHostState('host1', 'node1', capabilities)
-        self.assertTrue(self.filt_cls.host_passes(host, spec_obj))
-        self.assertFalse(agg_mock.called)
+        assertion = self.assertTrue if passes else self.assertFalse
+        assertion(self.filt_cls.host_passes(host, spec_obj))
+        self.assertTrue(agg_mock.called)
+
+    def test_aggregate_filter_no_extra_specs_agg_az_meta(self, agg_mock):
+        # for host in aggregate with zone and with metadata
+        agg_meta = {'availability_zone': 'nova', 'opt1': 1, 'opt2': 2}
+        passes = False
+        self._do_test_aggregate_filter_and_meta(agg_meta,
+                                                passes, agg_mock)
+
+    def test_aggregate_filter_empty_extra_specs_agg_az_meta(self, agg_mock):
+        # for host in aggregate with zone and with metadata
+        agg_meta = {'availability_zone': 'nova', 'opt1': 1, 'opt2': 2}
+        passes = False
+        self._do_test_aggregate_filter_and_meta(agg_meta,
+                                                passes, agg_mock)
+
+    def test_aggregate_filter_passes_no_extra_specs_agg_az(self, agg_mock):
+        # for host in aggregate with zone
+        # but without other metadata
+        agg_meta = {'availability_zone': 'nova'}
+        passes = True
+        self._do_test_aggregate_filter_and_meta(agg_meta,
+                                                passes, agg_mock)
+
+    def test_aggregate_filter_passes_empty_extra_specs_agg_az(self, agg_mock):
+        # for host in aggregate with zone
+        # but without other metadata
+        agg_meta = {'availability_zone': 'nova'}
+        passes = True
+        self._do_test_aggregate_filter_and_meta(agg_meta,
+                                                passes, agg_mock)
+
+    def test_aggregate_filter_passes_no_extra_specs(self, agg_mock):
+        # for host in aggregate without any metadata
+        agg_meta = {}
+        passes = True
+        self._do_test_aggregate_filter_and_meta(agg_meta,
+                                                passes, agg_mock)
 
     def test_aggregate_filter_passes_empty_extra_specs(self, agg_mock):
-        capabilities = {'opt1': 1, 'opt2': 2}
-
-        spec_obj = objects.RequestSpec(
-            context=mock.sentinel.ctx,
-            flavor=objects.Flavor(memory_mb=1024, extra_specs={}))
-        host = fakes.FakeHostState('host1', 'node1', capabilities)
-        self.assertTrue(self.filt_cls.host_passes(host, spec_obj))
-        self.assertFalse(agg_mock.called)
+        # for host in aggregate without any metadata
+        agg_meta = {}
+        passes = True
+        self._do_test_aggregate_filter_and_meta(agg_meta,
+                                                passes, agg_mock)
 
     def _do_test_aggregate_filter_extra_specs(self, especs, passes):
         spec_obj = objects.RequestSpec(

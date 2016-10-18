@@ -44,7 +44,20 @@ class AggregateInstanceExtraSpecsFilter(filters.BaseHostFilter):
         # need not proceed further
         if (not instance_type.obj_attr_is_set('extra_specs')
                 or not instance_type.extra_specs):
-            return True
+            # when extra_specs is empty filter host without aggregate
+            metadata = utils.aggregate_metadata_get_by_host(host_state)
+            # delete availability_zone key value
+            # for host in aggragate but without any key value
+            az_key = 'availability_zone'
+            if az_key in metadata:
+                del metadata[az_key]
+            # if dict is empty,host is without any aggregate
+            # else dict is not empty,host with aggregate not useful
+            # for empty falvor extra_specs
+            if not metadata:
+                return True
+            else:
+                return False
 
         metadata = utils.aggregate_metadata_get_by_host(host_state)
 
