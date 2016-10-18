@@ -18,6 +18,7 @@ from nova.api.openstack import common
 from nova.api.openstack import extensions
 from nova.api.openstack import wsgi
 from nova import compute
+from nova.compute import power_state
 from nova import exception
 from nova.i18n import _
 from nova.i18n import _LI
@@ -61,12 +62,16 @@ class LiveSnapshotInstanceController(wsgi.Controller):
             else:
                 if(meta['status'] == 'active'
                    and meta['properties']['instance_uuid'] == id
-                   and meta['properties']['image_type'] == 'snapshot'
-                   and 'memory_snapshot_id' in meta['properties']):
+                   and meta['properties']['image_type'] ==
+                        'snapshot_for_instance'):
 
                     snapshot = {}
                     snapshot['snapshot_id'] = meta['id']
                     snapshot['snapshot_name'] = meta['name']
+                    snapshot['snapshot_type'] = \
+                        meta['properties']['snapshot_type']
+                    snapshot['snapshot_build_type'] = \
+                        meta['properties']['snapshot_build_type']
                     snapshot_list.append(snapshot)
 
         return {'snapshot_list': snapshot_list}
@@ -120,11 +125,16 @@ class LiveSnapshotInstanceController(wsgi.Controller):
             msg = _("Missing 'display_name'")
             raise exc.HTTPUnprocessableEntity(explanation=msg)
 
+        # manual/automatic
+        snapshot_build_type = live_snapshot.get("snapshot_build_type",
+                                                "manual")
+
         LOG.info(_LI("Create live_snapshot_instance of vm:%s"), id,
-                  context=context)
+                 context=context)
 
         props = {}
-        metadata = live_snapshot.get('metadata', {})
+        metadata = live_snapshot.get(
+            'metadata', {'snapshot_build_type': snapshot_build_type})
         common.check_img_metadata_properties_quota(context, metadata)
         try:
             props.update(metadata)
@@ -136,8 +146,10 @@ class LiveSnapshotInstanceController(wsgi.Controller):
                                        context,
                                        id)
 
-        if(instance['vm_state'] not in ['active', 'paused']
-           or instance['power_state'] not in [1, 3]
+        if(instance['vm_state'] not in ['active', 'paused', 'stopped']
+           or instance['power_state'] not in [power_state.RUNNING,
+                                              power_state.PAUSED,
+                                              power_state.SHUTDOWN]
            or instance['task_state'] is not None):
             raise exception.InstanceNotReady(instance_id=instance['uuid'])
 
@@ -145,19 +157,25 @@ class LiveSnapshotInstanceController(wsgi.Controller):
             context, instance.uuid)
 
         try:
+            if instance['vm_state'] == 'stopped':
+                memory_snapshot = False
+            else:
+                memory_snapshot = True
             if self.compute_api.is_volume_backed_instance(context,
                                                           instance,
                                                           bdms):
-
-                image = self.compute_api.snapshot_volume_backed(
-                    context,
-                    instance,
-                    display_name,
-                    extra_properties=props,
-                    memory_snapshot=True)
+                image_system = False
             else:
-                msg = _("Live snapshot instance do not support image disk")
-                raise exc.HTTPBadRequest(explanation=msg)
+                image_system = True
+
+            image = self.compute_api.snapshot_for_instance(
+                context,
+                instance,
+                display_name,
+                extra_properties=props,
+                memory_snapshot=memory_snapshot,
+                image_system=image_system)
+
         except exception.Invalid as err:
             raise exc.HTTPBadRequest(explanation=err.format_message())
 
@@ -205,7 +223,7 @@ class LiveSnapshotInstanceController(wsgi.Controller):
                                        vm_uuid)
 
         if(instance['vm_state'] != 'stopped'
-           or instance['power_state'] != 4
+           or instance['power_state'] != power_state.SHUTDOWN
            or instance['task_state'] is not None):
             raise exception.InstanceNotReady(instance_id=instance['uuid'])
 

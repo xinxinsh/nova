@@ -927,13 +927,13 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
             # suspend change power_state to 3
             virt_dom.suspend()
             instance.vm_state = 'paused'
-            instance.power_state = 3
+            instance.power_state = power_state.PAUSED
             instance.save()
 
         if action == 'resume':
             virt_dom.resume()
             instance.vm_state = 'active'
-            instance.power_state = 1
+            instance.power_state = power_state.RUNNING
             instance.save()
 
     def create_memory_snapshot(self, context, instance, image_meta,
@@ -953,9 +953,6 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
         metadata['disk_format'] = 'raw'
         metadata['container_format'] = 'bare'
 
-        LOG.info(_LI("Memory snapshot image beginning upload"),
-                 instance=instance)
-
         try:
             virt_dom = self._lookup_by_name(instance['name'])
         except exception.InstanceNotFound:
@@ -963,37 +960,37 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
 
         if memory_file:
             # save change power_state to 4 and vm_state to 'stopped'
-            virt_dom.save(memory_file)
-            time.sleep(3)
-
-            # verify volume snapshot sucessfully
-            for block in volume_mapping:
-                volume_snapshot = self._volume_api.get_snapshot(
-                    context,
-                    block['snapshot_id'])
-                if volume_snapshot['status'] != 'available':
-                    msg = _('volume snapshot %s has something '
-                            'error') % block['snapshot_id']
-                    raise exception.NovaException(msg)
+            try:
+                LOG.info(_LI("Export memory snapshot file to local"),
+                         instance=instance)
+                virt_dom.save(memory_file)
+            except libvirt.libvirtError as ex:
+                LOG.error(_LI("Memory snapshot save error, libvirt:%s"), ex)
+            time.sleep(1)
 
             try:
                 # restore only change power_state to 1,
                 # vm_state still 'stopped'
+                LOG.info(_LI("Restore instance from memory snapshot file"),
+                         instance=instance)
                 self._conn.restore(memory_file)
 
                 if vm_active:
                     virt_dom.resume()
                     instance.vm_state = 'active'
-                    instance.power_state = 1
+                    instance.power_state = power_state.RUNNING
                 else:
                     # change vm_state and power_state to 'paused'
                     # in the dashboard
                     instance.vm_state = 'paused'
-                    instance.power_state = 3
+                    instance.power_state = power_state.PAUSED
                 instance.save()
             except Exception:
                 msg = _('restore memory file error')
                 raise exception.NovaException(msg)
+
+            LOG.info(_LI("Memory snapshot image beginning upload"),
+                     instance=instance)
 
             libvirt_utils.chown(memory_file, os.getuid())
             with libvirt_utils.file_open(memory_file) as image_file:
@@ -1035,7 +1032,7 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
                 # now resume
                 virt_dom.resume()
                 instance.vm_state = 'active'
-                instance.power_state = 1
+                instance.power_state = power_state.RUNNING
                 instance.save()
             except Exception:
                 msg = _('restore memory file error')
