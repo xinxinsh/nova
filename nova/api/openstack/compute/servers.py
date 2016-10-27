@@ -1339,6 +1339,17 @@ class GetServersInfoController(wsgi.Controller):
                 instance = self.compute_api.get(context, s['server_id'],
                                                 want_objects=True,
                                                 expected_attrs=None)
+
+                # it sets vm_state and task_state,this value is temp and only
+                # show vm status ,the purpose of  getting mmediately status
+                # other compute node it sets instance task_state none it sets
+                # instance vm_state unmanaged
+                self.compute_api.update_instances_vm_status_by_cache(context)
+
+                if instance.host in self.compute_api.instances_vm_status:
+                    instance.vm_state = vm_states.UNMANAGED
+                    instance.task_state = "none"
+
             except exception.InstanceNotFound as e:
                 LOG.error(e.format_message())
             else:
