@@ -60,8 +60,7 @@ class LiveSnapshotInstanceController(wsgi.Controller):
             if 'instance_uuid' not in meta['properties']:
                 pass
             else:
-                if(meta['status'] == 'active'
-                   and meta['properties']['instance_uuid'] == id
+                if(meta['properties']['instance_uuid'] == id
                    and meta['properties']['image_type'] ==
                         'snapshot_for_instance'):
 
@@ -72,6 +71,8 @@ class LiveSnapshotInstanceController(wsgi.Controller):
                         meta['properties']['snapshot_type']
                     snapshot['snapshot_build_type'] = \
                         meta['properties']['snapshot_build_type']
+                    snapshot['snapshot_status'] = meta['status']
+                    snapshot['created_at'] = meta['created_at']
                     snapshot_list.append(snapshot)
 
         return {'snapshot_list': snapshot_list}
