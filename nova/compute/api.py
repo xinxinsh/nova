@@ -2310,6 +2310,13 @@ class API(base.Base):
         image_meta.update({'name': name,
                            'is_public': False})
 
+        # 'source_instance' exist only when NeoCU customize image
+        if 'source_instance' in extra_properties \
+                and 'image_is_public' in extra_properties:
+            if extra_properties['image_is_public'] == 'True':
+                image_meta.update({'is_public': True})
+            del extra_properties['image_is_public']
+
         # Delete properties that are non-inheritable
         properties = image_meta['properties']
         for key in CONF.non_inheritable_image_properties:

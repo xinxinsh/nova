@@ -1736,6 +1736,10 @@ class LibvirtDriver(driver.ComputeDriver):
                                                   image_format,
                                                   snapshot['name'])
 
+        # 'source_instance' exist only when NeoCU to customize_image
+        if 'source_instance' in snapshot['properties']:
+            metadata['is_public'] = snapshot['is_public']
+
         snapshot_name = uuid.uuid4().hex
 
         state = guest.get_power_state(self._host)
