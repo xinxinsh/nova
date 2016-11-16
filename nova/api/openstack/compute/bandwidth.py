@@ -19,6 +19,7 @@ from nova.api.openstack import common
 from nova.api.openstack import extensions
 from nova.api.openstack import wsgi
 from nova import compute
+from nova import exception
 from nova.i18n import _
 from oslo_log import log as logging
 import webob
@@ -64,6 +65,33 @@ class BandwidthController(wsgi.Controller):
             outbound_kilo_bytes)
 
         return webob.Response(status_int=202)
+
+    @wsgi.action('getInterfaceBandwidth')
+    def _get_interface_bandwidth(self, req, id, body):
+        """Set bandwidth of instance virtual interface."""
+        context = req.environ['nova.context']
+        authorize(context)
+
+        # Validate the input entity
+        if 'portId' not in body['getInterfaceBandwidth']:
+            msg = _("Missing 'portId' argument for getInterfaceBandwidth")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+        port_id = body['getInterfaceBandwidth']['portId']
+        try:
+            bandwidth = self.compute_api.get_interface_bandwidth(
+                context,
+                port_id)
+            if bandwidth:
+                return dict(created_at=bandwidth.created_at,
+                            inbound_kilo_bytes=bandwidth.inbound_kilo_bytes,
+                            outbound_kilo_bytes=bandwidth.outbound_kilo_bytes,
+                            port_id=bandwidth.port_id,
+                            updated_at=bandwidth.updated_at)
+        except exception.NotFound as e:
+            raise exc.HTTPNotFound(explanation=e.format_message())
+        except exception.NovaException as e:
+            raise exc.HTTPBadRequest(explanation=e.format_message())
 
 
 # Note: The class name is as it has to be for this to be loaded as an

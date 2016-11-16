@@ -67,6 +67,7 @@ from nova.network.security_group import openstack_driver
 from nova.network.security_group import security_group_base
 from nova import notifications
 from nova import objects
+from nova.objects import bandwidth as bandwidth_obj
 from nova.objects import base as obj_base
 from nova.objects import block_device as block_device_obj
 from nova.objects import fields as fields_obj
@@ -4275,6 +4276,10 @@ class API(base.Base):
             context, instance, port_id,
             inbound_kilo_bytes,
             outbound_kilo_bytes)
+
+    def get_interface_bandwidth(self, context, port_id):
+        """Get bandwidth for an instance interface."""
+        return bandwidth_obj.Bandwidth.get_by_port_id(context, port_id)
 
 
 class HostAPI(base.Base):
