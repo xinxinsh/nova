@@ -59,6 +59,20 @@ class AggregateInstanceExtraSpecsFilter(filters.BaseHostFilter):
             else:
                 return False
 
+        # Add flow for 2003 hw:cpu_max_sockets
+        # when only with hw:cpu_max_sockets not to aggregate host
+        extra_spec = instance_type.extra_specs
+        if len(extra_spec) == 1 and \
+                extra_spec.keys()[0] == "hw:cpu_max_sockets":
+            metadata = utils.aggregate_metadata_get_by_host(host_state)
+            az_key = 'availability_zone'
+            if az_key in metadata:
+                del metadata[az_key]
+            if not metadata:
+                return True
+            else:
+                return False
+
         metadata = utils.aggregate_metadata_get_by_host(host_state)
 
         for key, req in six.iteritems(instance_type.extra_specs):
