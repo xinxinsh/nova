@@ -92,7 +92,9 @@ class TestComputeCapabilitiesFilter(test.NoDBTestCase):
         self._do_test_compute_filter_extra_specs(
             ecaps={'stats': {'opt1': 1, 'opt2': 2}},
             especs={'opt1': '1', 'opt2': '222', 'trust:trusted_host': 'true'},
-            passes=False)
+            # passes=False)
+            # chinac change this flow
+            passes=True)
 
     def test_compute_filter_pass_extra_specs_simple_with_scope(self):
         self._do_test_compute_filter_extra_specs(
@@ -106,7 +108,9 @@ class TestComputeCapabilitiesFilter(test.NoDBTestCase):
         self._do_test_compute_filter_extra_specs(
             ecaps={'capabilities': 1},
             especs={'capabilities': '1'},
-            passes=True)
+            # passes=True)
+            # chinac change this flow
+            passes=False)
 
     def test_compute_filter_extra_specs_simple_with_wrong_scope(self):
         self._do_test_compute_filter_extra_specs(

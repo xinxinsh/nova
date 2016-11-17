@@ -3962,7 +3962,10 @@ class LibvirtDriver(driver.ComputeDriver):
         topology = hardware.get_best_cpu_topology(
                 flavor, image_meta, numa_topology=instance_numa_topology)
 
-        cpu.sockets = topology.sockets
+        if 'cpu_max' in flavor.extra_specs:
+            cpu.sockets = flavor.extra_specs.get('cpu_max')
+        else:
+            cpu.sockets = topology.sockets
         cpu.cores = topology.cores
         cpu.threads = topology.threads
         cpu.numa = guest_cpu_numa_config
@@ -4972,6 +4975,17 @@ class LibvirtDriver(driver.ComputeDriver):
         # We are using default unit for memory: KiB
         guest.memory = flavor.memory_mb * units.Ki
         guest.vcpus = flavor.vcpus
+        # Add cpu max
+        if 'cpu_max' in flavor.extra_specs:
+            guest.vcpus_max = flavor.extra_specs.get('cpu_max')
+        else:
+            guest.vcpus_max = flavor.vcpus
+        # Add max_mem
+        if 'mem_max' in flavor.extra_specs:
+            guest.mem_max = int(flavor.extra_specs.get('mem_max')) * units.Ki
+        else:
+            # max_mem must be larger than current_mem
+            guest.mem_max = int(flavor.memory_mb + 1) * units.Ki
         allowed_cpus = hardware.get_vcpu_pin_set()
         pci_devs = pci_manager.get_instance_pci_devs(instance, 'all')
 

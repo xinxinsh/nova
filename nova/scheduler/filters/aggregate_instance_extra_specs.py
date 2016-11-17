@@ -64,11 +64,14 @@ class AggregateInstanceExtraSpecsFilter(filters.BaseHostFilter):
         for key, req in six.iteritems(instance_type.extra_specs):
             # Either not scope format, or aggregate_instance_extra_specs scope
             scope = key.split(':', 1)
-            if len(scope) > 1:
+            if len(scope) >= 1:
                 if scope[0] != _SCOPE:
                     continue
                 else:
                     del scope[0]
+            # for aggregate_instance_extra_specs:1 this case
+            if len(scope) < 1:
+                continue
             key = scope[0]
             aggregate_vals = metadata.get(key, None)
             if not aggregate_vals:

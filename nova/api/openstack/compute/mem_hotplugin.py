@@ -170,6 +170,37 @@ class MemHotpluginController(wsgi.Controller):
                                                            'detach_interface')
         return webob.Response(status_int=202)
 
+    def update(self, req, server_id, id, body):
+        """Clean a memory device from an instance"""
+        context = req.environ['nova.context']
+        authorize(context)
+        mem_name = id
+        try:
+            instance = common.get_instance(self.compute_api,
+                                           context, server_id)
+            objects.InstanceMemoryDevice.destroy_by_name_uuid(
+                context, mem_name, instance['uuid'])
+        except exception.InstanceNotFound as e:
+            msg = _("Server not found")
+            raise webob.exc.HTTPNotFound(explanation=msg)
+        except exception.MemNotFound as e:
+            raise webob.exc.HTTPNotFound(explanation=e.format_message())
+        except exception.InstanceIsLocked as e:
+            raise webob.exc.HTTPConflict(explanation=e.format_message())
+        except NotImplementedError:
+            msg = _("Memory driver does not support this function.")
+            # raise exc.HTTPNotImplemented(explanation=msg)
+            raise webob.exc.raise_feature_not_supported(explanation=msg)
+        except exception.MemDetachFailed as e:
+            LOG.exception(e)
+            msg = _("Failed to detach memory device")
+            raise webob.exc.HTTPInternalServerError(explanation=msg)
+        except exception.InstanceInvalidState as state_error:
+            common.\
+            raise_http_conflict_for_instance_invalid_state(state_error,
+                                                           'detach_interface')
+        return webob.Response(status_int=202)
+
 
 class Mem_hotplugin(extensions.V21APIExtensionBase):
     """Attach memory hotplugin support. """

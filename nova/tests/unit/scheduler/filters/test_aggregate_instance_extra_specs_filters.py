@@ -131,4 +131,6 @@ class TestAggregateInstanceExtraSpecsFilter(test.NoDBTestCase):
             'opt2': '222',
             'trust:trusted_host': 'true'
         }
-        self._do_test_aggregate_filter_extra_specs(especs, passes=False)
+        # chinac changed this flow
+        # self._do_test_aggregate_filter_extra_specs(especs, passes=False)
+        self._do_test_aggregate_filter_extra_specs(especs, passes=True)

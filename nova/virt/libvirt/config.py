@@ -1997,10 +1997,12 @@ class LibvirtConfigGuest(LibvirtConfigObject):
         self.uuid = None
         self.name = None
         self.memory = 500 * units.Mi
+        self.mem_max = 500 * units.Mi
         self.membacking = None
         self.memtune = None
         self.numatune = None
         self.vcpus = 1
+        self.vcpus_max = 1
         self.cpuset = None
         self.cpu = None
         self.cputune = None
@@ -2030,8 +2032,7 @@ class LibvirtConfigGuest(LibvirtConfigObject):
 
         # add maxMemory and Version >= 1002015 libvirt 1.2.15
         if libvirt.getVersion(None) >= 1002015:
-            maxMemory = self._text_node("maxMemory",
-                                        str(int(self.memory) + 67108864))
+            maxMemory = self._text_node("maxMemory", str(self.mem_max))
             maxMemory.set("slots", "128")
             root.append(maxMemory)
 
@@ -2042,13 +2043,13 @@ class LibvirtConfigGuest(LibvirtConfigObject):
         if self.numatune is not None:
             root.append(self.numatune.format_dom())
         if self.cpuset is not None:
-            vcpu = self._text_node("vcpu", self.vcpus)
+            vcpu = self._text_node("vcpu", self.vcpus_max)
             vcpu.set("cpuset", hardware.format_cpu_spec(self.cpuset))
-            # vcpu.set("current", "1")
+            vcpu.set("current", str(self.vcpus))
             root.append(vcpu)
         else:
-            vcpu = self._text_node("vcpu", self.vcpus)
-            # vcpu.set("current", "1")
+            vcpu = self._text_node("vcpu", self.vcpus_max)
+            vcpu.set("current", str(self.vcpus))
             root.append(vcpu)
 
         if len(self.metadata) > 0:
