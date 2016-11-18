@@ -41,7 +41,9 @@ from oslo_utils import excutils
 from oslo_utils import strutils
 from six.moves import range
 
+from nova.api.metadata import base as instance_metadata
 from nova.compute import power_state
+from nova.compute import utils as compute_utils
 import nova.conf
 from nova import context as nova_context
 from nova import exception
@@ -59,6 +61,7 @@ from nova.virt import driver as virt_driver
 from nova.virt import event as virtevent
 from nova.virt.libvirt import config as vconfig
 from nova.virt.libvirt import host
+from nova.virt.libvirt import imagebackend
 from nova.virt.libvirt import utils as libvirt_utils
 from nova.virt.libvirt import vif as libvirt_vif
 from nova import volume
@@ -181,6 +184,7 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
         self._image_api = image.API()
 
         self.vif_driver = libvirt_vif.LibvirtGenericVIFDriver()
+        self.image_backend = imagebackend.Backend(CONF.use_cow_images)
 
     def emit_event(self, event):
         """Dispatches an event to the compute manager.
@@ -828,23 +832,49 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
         return os.path.join(libvirt_utils.get_instance_path(instance),
                             'disk.config' + suffix)
 
+    @staticmethod
+    def _get_disk_config_image_type():
+        # TODO(mikal): there is a bug here if images_type has
+        # changed since creation of the instance, but I am pretty
+        # sure that this bug already exists.
+        return 'rbd' if CONF.libvirt.images_type == 'rbd' else 'raw'
+
     def setup_config_driver(self, instance, files):
-        with configdrive.ConfigDriveBuilder() as cdb:
+        LOG.info(_LI('Using config drive'), instance=instance)
+        network_info = compute_utils.get_nw_info_for_instance(instance)
+        extra_md = {}
+        inst_md = instance_metadata.InstanceMetadata(instance,
+            content=files, extra_md=extra_md, network_info=network_info)
+        with configdrive.ConfigDriveBuilder(instance_md=inst_md) as cdb:
             configdrive_path = self._get_disk_config_path(instance)
             LOG.info(_LI('Creating config drive at %(path)s'),
                      {'path': configdrive_path}, instance=instance)
-            cdb.mdfiles = files
             try:
                 if os.path.exists(configdrive_path):
                     libvirt_utils.chown(configdrive_path, os.getuid())
                 cdb.make_drive(configdrive_path)
-                return True
             except processutils.ProcessExecutionError as e:
                 with excutils.save_and_reraise_exception():
                     LOG.error(_LE('Creating config drive failed '
                                   'with error: %s'),
                               e, instance=instance)
                     return False
+
+        try:
+            suffix = ''
+            # Tell the storage backend about the config drive
+            config_drive_image = self.image_backend.image(
+                instance, 'disk.config' + suffix,
+                self._get_disk_config_image_type())
+
+            config_drive_image.import_file(
+                instance, configdrive_path, 'disk.config' + suffix)
+        finally:
+            # NOTE(mikal): if the config drive was imported into RBD, then
+            # we no longer need the local copy
+            if CONF.libvirt.images_type == 'rbd':
+                os.unlink(configdrive_path)
+        return True
 
     def _lookup_by_name(self, instance_name):
         """Retrieve libvirt domain object given an instance name.
