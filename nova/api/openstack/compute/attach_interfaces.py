@@ -90,6 +90,9 @@ class InterfaceAttachmentController(wsgi.Controller):
     def create(self, req, server_id, body):
         """Attach an interface to an instance."""
         context = req.environ['nova.context']
+        # chinac-only start
+        context.instance_uuid = server_id
+        # chinac-only end
         authorize(context)
 
         network_id = None
@@ -144,6 +147,9 @@ class InterfaceAttachmentController(wsgi.Controller):
     def delete(self, req, server_id, id):
         """Detach an interface from an instance."""
         context = req.environ['nova.context']
+        # chinac-only start
+        context.instance_uuid = server_id
+        # chinac-only end
         authorize(context)
         port_id = id
 

@@ -77,6 +77,9 @@ class MemHotpluginController(wsgi.Controller):
     def create(self, req, server_id, body=None):
         """Attach a memory hotplugin to an instance."""
         context = req.environ['nova.context']
+        # chinac-only start
+        context.instance_uuid = server_id
+        # chinac-only end
         authorize(context)
 
         target_size = None
