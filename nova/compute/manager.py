@@ -5554,6 +5554,32 @@ class ComputeManager(manager.Manager):
                 migrate_data_obj.LiveMigrateData.detect_implementation(
                     migrate_data)
 
+        # chinac change this flow
+        # add local iso type diskconfig auto detach
+        # vm can live-migration
+        is_shared_block_storage = True
+        is_shared_instance_path = True
+        if migrate_data:
+            if not isinstance(migrate_data, migrate_data_obj.LiveMigrateData):
+                obj = objects.LibvirtLiveMigrateData()
+                obj.from_legacy_dict(migrate_data)
+                migrate_data = obj
+            LOG.debug('migrate_data in do_live_migration: %s', migrate_data,
+                      instance=instance)
+            is_shared_block_storage = migrate_data.is_shared_block_storage
+            is_shared_instance_path = migrate_data.is_shared_instance_path
+
+        if configdrive.required_by(instance):
+            if (is_shared_block_storage or
+                is_shared_instance_path or
+                CONF.config_drive_format == 'vfat'):
+                pass
+            else:
+                instance.config_drive = ''
+                instance.save()
+                self.driver.ensure_detach_disk_config(instance)
+                migrate_data.block_migration = False
+
         try:
             if ('block_migration' in migrate_data and
                     migrate_data.block_migration):
