@@ -48,6 +48,9 @@ class QgaController(wsgi.Controller):
     @wsgi.action('qga')
     def _qga(self, req, id, body):
         context = req.environ['nova.context']
+        # chinac-only start
+        context.instance_uuid = id
+        # chinac-only end
         authorize(context)
 
         try:

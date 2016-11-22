@@ -351,6 +351,13 @@ def core_authorizer(api_name, extension_name):
             act = '%s:%s' % (api_name, extension_name)
         else:
             act = '%s:%s:%s' % (api_name, extension_name, action)
+        # chinac-only start
+        # (fixme), zhouxbj, return detail still not clear yet.
+        # just add the extra 'target_id' key temporary
+        if context.__dict__.get('instance_uuid', None):
+            target.update(
+                dict(target_id=context.__dict__.get('instance_uuid')))
+        # chinac-only end
         nova.policy.enforce(context, act, target)
     return authorize
 

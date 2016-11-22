@@ -789,6 +789,9 @@ class ServersController(wsgi.Controller):
         resize_schema['properties']['resize']['properties'].update(schema)
 
     def _delete(self, context, req, instance_uuid):
+        # chinac-only start
+        context.instance_uuid = instance_uuid
+        # chinac-only end
         authorize(context, action='delete')
         instance = self._get_server(context, req, instance_uuid)
         if CONF.reclaim_instance_interval:
@@ -891,6 +894,9 @@ class ServersController(wsgi.Controller):
 
         reboot_type = body['reboot']['type'].upper()
         context = req.environ['nova.context']
+        # chinac-only start
+        context.instance_uuid = id
+        # chinac-only end
         authorize(context, action='reboot')
         instance = self._get_server(context, req, id)
 
@@ -909,6 +915,9 @@ class ServersController(wsgi.Controller):
     def _action_cpu_hotplug(self, req, id, body):
         cpu_num = body['cpu_hotplug']['cpu_num']
         context = req.environ['nova.context']
+        # chinac-only start
+        context.instance_uuid = id
+        # chinac-only end
         authorize(context, action='cpu_hotplug')
         instance = self._get_server(context, req, id)
         try:
@@ -945,6 +954,9 @@ class ServersController(wsgi.Controller):
     def _resize(self, req, instance_id, flavor_id, **kwargs):
         """Begin the resize process with given instance/flavor."""
         context = req.environ["nova.context"]
+        # chinac-only start
+        context.instance_uuid = instance_id
+        # chinac-only end
         authorize(context, action='resize')
         instance = self._get_server(context, req, instance_id)
 
@@ -1064,6 +1076,9 @@ class ServersController(wsgi.Controller):
         password = self._get_server_admin_password(rebuild_dict)
 
         context = req.environ['nova.context']
+        # chinac-only start
+        context.instance_uuid = id
+        # chinac-only end
         authorize(context, action='rebuild')
         instance = self._get_server(context, req, id)
 
