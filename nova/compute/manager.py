@@ -29,6 +29,7 @@ import base64
 import contextlib
 import copy
 import functools
+import hashlib
 import inspect
 import os
 import socket
@@ -61,6 +62,7 @@ from nova.cloudpipe import pipelib
 from nova import compute
 from nova.compute import build_results
 from nova.compute import claims
+from nova.compute import flavors
 from nova.compute import power_state
 from nova.compute import resource_tracker
 from nova.compute import rpcapi as compute_rpcapi
@@ -5303,6 +5305,13 @@ class ComputeManager(manager.Manager):
     @wrap_instance_fault
     def cpu_hotplug(self, context, instance, cpu_num):
         """Hotplug vcpu to an instance."""
+        new_flavor = self._create_instance_type(context,
+                                instance, incre_vcpus=cpu_num)
+        LOG.info(_LW("Plug %(cpu_num)s vcpus for %(uuid)s"),
+                {'cpu_num': cpu_num, 'uuid': instance.uuid})
+        if new_flavor:
+            self._set_instance_info(instance, new_flavor)
+            instance.save()
         return self.driver.cpu_hotplug(instance, cpu_num)
 
     @object_compat
@@ -5312,6 +5321,13 @@ class ComputeManager(manager.Manager):
     def attach_mem(self, context, instance, target_size,
                    target_node, source_pagesize, source_nodemask):
         """Use hotplug to add a memory device to an instance."""
+        new_flavor = self._create_instance_type(context,
+                                instance, incre_mem=target_size)
+        LOG.info(_LW("Attach mem %(target_size)s for %(uuid)s"),
+                    {"target_size": target_size, "uuid": instance.uuid})
+        if new_flavor:
+            self._set_instance_info(instance, new_flavor)
+            instance.save()
         image_meta = objects.ImageMeta.from_instance(instance)
         return self.driver.attach_mem(instance, image_meta,
                                       target_size, target_node,
@@ -7512,3 +7528,83 @@ class ComputeManager(manager.Manager):
 
         self.driver.set_interface_bandwidth(
             instance, condemned, inbound_kilo_bytes, outbound_kilo_bytes)
+
+    # (zhouxj)obscure check for pass through dict argument, still not clear
+    # the reason why chinac pep8/flake8 weird check logic
+    # "N322  Method's default argument shouldn't be mutable!"
+    # chinac-only start
+    # def _create_instance_type(self,context,instance,ins_type={},**kwargs):
+    def _create_instance_type(self, context, instance,
+                              ins_type=None, **kwargs):
+        """Create instance type or use former one
+
+        :param ins_type: dict type, which will overlap kwargs
+        :param kwargs: dict like {"incre_vcps":xxxx, "incre_mem": xxx}
+        """
+        if not ins_type:
+            ins_type = {}
+        # (fixme), zhouxbj, should check the input param from osapi
+        incre_vcpus, incre_mem = 0, 0
+        if kwargs.get('incre_vcpus', '').isdigit():
+            incre_vcpus = int(kwargs.get('incre_vcpus'))
+        if kwargs.get('incre_mem', '').isdigit():
+            # (fixme), zhouxbj, please care the py27/py30 diff
+            incre_mem = int(int(kwargs.get('incre_mem')) / (1000))
+
+        # no change should return
+        if not (ins_type or (incre_vcpus or incre_mem)):
+            return None
+
+        # get instance old flavor info
+        # (fixme),zhouxbj: instance.vcpus might not match with
+        # instance.flavor.vcpus for some reason
+        # so load_flavor from db
+        instance._load_flavor()
+        old_type_vcpus = instance.flavor.vcpus
+        old_type_mem = instance.flavor.memory_mb
+        LOG.info(_LW("Instance %(uuid)s flavor %(flavor)s is deprecated"),
+                 {"uuid": instance.uuid, "flavor": instance.flavor})
+
+        # os-mem/os-cpu api just provides increment value
+        new_type_vcpus = ins_type.get('vcpus', False) or \
+                    (old_type_vcpus + int(incre_vcpus))
+        new_type_mem = ins_type.get('memory_mb', False) or \
+                    (old_type_mem + int(incre_mem))
+
+        # get all flavor info with extra_specs
+        ty_list = flavors.get_all_flavors_sorted_list(context,
+                                            filters={'extra_specs': True})
+        ty_dict = {}
+        # check instance new flavor info whether existed or not,
+        # and reuse the {sha224_id:Flavor()} dict when necessary
+        ty_list = [ty_dict.update(
+                  {ty.extra_specs.get('lr_sha224'): ty})
+                  for ty in ty_list if ty.extra_specs.get('lr_sha224', False)]
+
+        # (zhouxbj) use join later
+        new_ty_name = 'lr_auto_' + str(new_type_vcpus) + \
+                     '_' + str(new_type_mem)
+
+        new_ty_sha = hashlib.sha224(new_ty_name).hexdigest()
+
+        # if get nothing, create one
+        if not ty_dict.get(new_ty_sha, None):
+            try:
+                new_flavor = flavors.create(new_ty_name,
+                                            new_type_mem,
+                                            new_type_vcpus,
+                                            root_gb=instance.flavor.root_gb,
+                               extra_specs=dict(lr_sha224=new_ty_sha))
+            except Exception:
+                LOG.info(_LW("Instance flavor %s Created Failed."
+                         "Please contact administrator."), new_ty_name)
+            else:
+                # use the new flavor as instance type
+                return new_flavor
+        else:
+            # use existed flavor for update instance
+            return ty_dict.get(new_ty_sha)
+
+        return None
+
+    # chinac-only end

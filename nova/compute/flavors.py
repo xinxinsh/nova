@@ -90,7 +90,7 @@ system_metadata_flavor_extra_props = [
 
 
 def create(name, memory, vcpus, root_gb, ephemeral_gb=0, flavorid=None,
-           swap=0, rxtx_factor=1.0, is_public=True):
+           swap=0, rxtx_factor=1.0, is_public=True, extra_specs=None):
     """Creates flavors."""
     if not flavorid:
         flavorid = uuid.uuid4()
@@ -170,6 +170,11 @@ def create(name, memory, vcpus, root_gb, ephemeral_gb=0, flavorid=None,
             is_public, strict=True)
     except ValueError:
         raise exception.InvalidInput(reason=_("is_public must be a boolean"))
+
+    # chinac-only start
+    if extra_specs:
+        kwargs['extra_specs'] = extra_specs
+    # chinac-only end
 
     flavor = objects.Flavor(context=context.get_admin_context(), **kwargs)
     flavor.create()

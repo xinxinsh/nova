@@ -5082,6 +5082,12 @@ def flavor_get_all(context, inactive=False, filters=None,
 
     inst_types = query.all()
 
+    # chianc-only start
+    if 'extra_specs' in filters:
+        return [_dict_with_extra_specs(i)
+                for i in inst_types if i.get('extra_specs', False)]
+    # chinac-only end
+
     return [_dict_with_extra_specs(i) for i in inst_types]
 
 

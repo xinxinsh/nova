@@ -2676,6 +2676,7 @@ class API(base.Base):
     @check_instance_state(vm_state=[vm_states.ACTIVE])
     def cpu_hotplug(self, context, instance, cpu_num):
         """Hot plug vcpu to instance."""
+        self._record_action_start(context, instance, 'cpu_hotplug')
         cpu_data = self.compute_rpcapi.cpu_hotplug(context,
                                 instance=instance, cpu_num=cpu_num)
         return cpu_data
@@ -3577,6 +3578,7 @@ class API(base.Base):
     def attach_mem(self, context, instance, target_size, target_node,
                    source_pagesize, source_nodemask):
         """Use hotplug to add a memory to an instance."""
+        self._record_action_start(context, instance, 'mem_attach')
         return self.compute_rpcapi.attach_mem(context,
                                               instance=instance,
                                               target_size=target_size,
