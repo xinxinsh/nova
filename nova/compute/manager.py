@@ -7562,6 +7562,7 @@ class ComputeManager(manager.Manager):
         instance._load_flavor()
         old_type_vcpus = instance.flavor.vcpus
         old_type_mem = instance.flavor.memory_mb
+        old_type_meta = instance.flavor.extra_specs
         LOG.info(_LW("Instance %(uuid)s flavor %(flavor)s is deprecated"),
                  {"uuid": instance.uuid, "flavor": instance.flavor})
 
@@ -7589,12 +7590,14 @@ class ComputeManager(manager.Manager):
 
         # if get nothing, create one
         if not ty_dict.get(new_ty_sha, None):
+            # inherit old type meta
+            old_type_meta.update(dict(lr_sha224=new_ty_sha))
             try:
                 new_flavor = flavors.create(new_ty_name,
                                             new_type_mem,
                                             new_type_vcpus,
                                             root_gb=instance.flavor.root_gb,
-                               extra_specs=dict(lr_sha224=new_ty_sha))
+                               extra_specs=old_type_meta)
             except Exception:
                 LOG.info(_LW("Instance flavor %s Created Failed."
                          "Please contact administrator."), new_ty_name)
