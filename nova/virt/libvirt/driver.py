@@ -1128,8 +1128,22 @@ class LibvirtDriver(driver.ComputeDriver):
             if CONF.libvirt.virt_type == 'lxc':
                 self._teardown_container(instance)
 
+    # chinac add this method to auto clean hotplug-in mem device
+    def _clean_mem_hotplug(self, context, instance):
+        try:
+            mems = objects.InstanceMemoryDeviceList.\
+                   get_by_instance_uuid(context,
+                                        instance['uuid'])
+            for mem in mems:
+                if mem is not None:
+                    objects.InstanceMemoryDevice.destroy_by_name_uuid(
+                    context, mem['name'], instance['uuid'])
+        except Exception:
+            LOG.warn(_LW("warning vm clean hotplug-in mem device"))
+
     def destroy(self, context, instance, network_info, block_device_info=None,
                 destroy_disks=True, migrate_data=None):
+        self._clean_mem_hotplug(context, instance)
         self._destroy(instance)
         self.cleanup(context, instance, network_info, block_device_info,
                      destroy_disks, migrate_data)
@@ -2888,7 +2902,7 @@ class LibvirtDriver(driver.ComputeDriver):
         re-creates the domain to ensure the reboot happens, as the guest
         OS cannot ignore this action.
         """
-
+        self._clean_mem_hotplug(context, instance)
         self._destroy(instance)
 
         # Convert the system metadata to image metadata
@@ -7246,6 +7260,7 @@ class LibvirtDriver(driver.ComputeDriver):
                      {"ex": ex}, instance=instance, exc_info=True)
             raise
         finally:
+            self._clean_mem_hotplug(context, instance)
             LOG.debug("Live migration monitoring is all done",
                       instance=instance)
 

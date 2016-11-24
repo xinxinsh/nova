@@ -40,11 +40,9 @@ class AggregateInstanceExtraSpecsFilter(filters.BaseHostFilter):
         the metadata provided by aggregates.  If not present return False.
         """
         instance_type = spec_obj.flavor
-        # If 'extra_specs' is not present or extra_specs are empty then we
-        # need not proceed further
-        if (not instance_type.obj_attr_is_set('extra_specs')
-                or not instance_type.extra_specs):
-            # when extra_specs is empty filter host without aggregate
+
+        # add method check host metadata for custom config
+        def check_host_metata_for_custom(host_state):
             metadata = utils.aggregate_metadata_get_by_host(host_state)
             # delete availability_zone key value
             # for host in aggragate but without any key value
@@ -59,19 +57,28 @@ class AggregateInstanceExtraSpecsFilter(filters.BaseHostFilter):
             else:
                 return False
 
+        # If 'extra_specs' is not present or extra_specs are empty then we
+        # need not proceed further
+        if (not instance_type.obj_attr_is_set('extra_specs')
+                or not instance_type.extra_specs):
+            # when extra_specs is empty filter host without aggregate
+            return check_host_metata_for_custom(host_state)
+
         # Add flow for 2003 hw:cpu_max_sockets
         # when only with hw:cpu_max_sockets not to aggregate host
         extra_spec = instance_type.extra_specs
         if len(extra_spec) == 1 and \
                 extra_spec.keys()[0] == "hw:cpu_max_sockets":
-            metadata = utils.aggregate_metadata_get_by_host(host_state)
-            az_key = 'availability_zone'
-            if az_key in metadata:
-                del metadata[az_key]
-            if not metadata:
-                return True
-            else:
-                return False
+            return check_host_metata_for_custom(host_state)
+
+        # Add flow for flavor only with cpu_max and cpu_mem
+        # when with cpu_max and cpu_mem not to aggregate host
+        extra_spec = instance_type.extra_specs
+        if "cpu_max" in extra_spec.keys() and \
+           "mem_max" in extra_spec.keys():
+            if len(extra_spec) == 2 or ("lr_sha224" in extra_spec.keys()
+               and len(extra_spec) == 3):
+                return check_host_metata_for_custom(host_state)
 
         metadata = utils.aggregate_metadata_get_by_host(host_state)
 
