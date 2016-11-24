@@ -5051,16 +5051,18 @@ class LibvirtDriver(driver.ComputeDriver):
         cdrom = self._get_guest_cdrom_device(instance, None, True)
         guest.add_device(cdrom)
 
+        # (now) when hotplug mem will update flavor
+        # so don't need load dimm mem dev
         # add mem dev
-        try:
-            mems = objects.InstanceMemoryDeviceList.\
-                   get_by_instance_uuid(context,
-                                        instance['uuid'])
-            for mem in mems:
-                if mem is not None:
-                    guest.add_device(self._create_memory_dev_by_obj(mem))
-        except Exception:
-            LOG.warn(_LW("warning vm get memory device list"))
+        # try:
+        #    mems = objects.InstanceMemoryDeviceList.\
+        #           get_by_instance_uuid(context,
+        #                                instance['uuid'])
+        #    for mem in mems:
+        #        if mem is not None:
+        #            guest.add_device(self._create_memory_dev_by_obj(mem))
+        # except Exception:
+        #    LOG.warn(_LW("warning vm get memory device list"))
         for vif in network_info:
             config = self.vif_driver.get_config(
                 instance, vif, image_meta,
