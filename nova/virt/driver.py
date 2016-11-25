@@ -527,6 +527,13 @@ class ComputeDriver(object):
         """
         raise NotImplementedError()
 
+    def clean_mem_hotplug(self, context, instance):
+        """clean mem hotplug-in
+
+        :param instance: nova.objects.instance.Instance
+        """
+        raise NotImplementedError()
+
     def list_mounted_cdrom(self, instance):
         raise NotImplementedError()
 
