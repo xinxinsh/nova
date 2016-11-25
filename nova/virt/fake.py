@@ -236,6 +236,11 @@ class FakeDriver(driver.ComputeDriver):
     def power_off(self, instance, timeout=0, retry_interval=0):
         pass
 
+    # chinac add this method to auto clean hotplug-in mem device
+    def clean_mem_hotplug(self, context, instance):
+        """Clean mem hotplug-in device."""
+        pass
+
     def power_on(self, context, instance, network_info,
                  block_device_info=None):
         pass

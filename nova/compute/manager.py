@@ -2302,6 +2302,7 @@ class ComputeManager(manager.Manager):
         timeout, retry_interval = self._get_power_off_values(context,
                                         instance, clean_shutdown)
         self.driver.power_off(instance, timeout, retry_interval)
+        self.driver.clean_mem_hotplug(context, instance)
 
     def _shutdown_instance(self, context, instance,
                            bdms, requested_networks=None, notify=True,
