@@ -130,12 +130,23 @@ class LiveSnapshotInstanceController(wsgi.Controller):
         snapshot_build_type = live_snapshot.get("snapshot_build_type",
                                                 "manual")
 
+        # create system snapshot
+        system_snapshot = live_snapshot.get("system_snapshot", "True")
+
+        # volume snapshot list
+        volume_snapshot_list = live_snapshot.get("volume_snapshot_list", [])
+
+        if system_snapshot == "False" and len(volume_snapshot_list) == 0:
+            msg = _("No disk is selected")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
         LOG.info(_LI("Create live_snapshot_instance of vm:%s"), id,
                  context=context)
 
         props = {}
         metadata = live_snapshot.get(
-            'metadata', {'snapshot_build_type': snapshot_build_type})
+            'metadata', {'snapshot_build_type': snapshot_build_type,
+                         'system_snapshot': system_snapshot})
         common.check_img_metadata_properties_quota(context, metadata)
         try:
             props.update(metadata)
@@ -173,6 +184,7 @@ class LiveSnapshotInstanceController(wsgi.Controller):
                 context,
                 instance,
                 display_name,
+                volume_snapshot_list,
                 extra_properties=props,
                 memory_snapshot=memory_snapshot,
                 image_system=image_system)

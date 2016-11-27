@@ -607,3 +607,8 @@ class API(object):
         body = {"os-rollback_to_snapshot": {}}
         snapshot = cinderclient(context).client.post(roll_back_path, body=body)
         return snapshot
+
+    @translate_snapshot_exception
+    def set_metadata(self, context, snapshot_id, metadata):
+        vs = cinderclient(context).volume_snapshots
+        return vs.set_metadata(snapshot_id, metadata)

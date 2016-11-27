@@ -2415,8 +2415,8 @@ class API(base.Base):
                                     vm_states.STOPPED,
                                     vm_states.PAUSED])
     def snapshot_for_instance(self, context, instance, name,
-                              extra_properties=None, memory_snapshot=False,
-                              image_system=False):
+                              volume_snapshot_list, extra_properties=None,
+                              memory_snapshot=False, image_system=False):
         """Snapshot the given instance, the system volume is created
         from cinder or image.
 
@@ -2445,7 +2445,7 @@ class API(base.Base):
         instance.task_state = task_states.IMAGE_SNAPSHOT_PENDING
         instance.save()
 
-        if memory_snapshot:
+        if memory_snapshot and properties['system_snapshot'] == "True":
             if instance.vm_state == 'active':
                 vm_active = True
                 LOG.info(_LI("Suspend the instance"))
@@ -2466,11 +2466,14 @@ class API(base.Base):
             context, instance.uuid)
 
         mapping = []
+        snapshot_list = []
         for bdm in bdms:
             if bdm.no_device:
                 continue
 
-            if image_system and bdm.device_name == '/dev/vda':
+            mapping_dict = {}
+            if image_system and bdm.device_name == '/dev/vda'\
+                    and properties['system_snapshot'] == "True":
                 # handle system disk (image)
                 image_meta_system = self._create_image(
                     context, instance,
@@ -2509,76 +2512,85 @@ class API(base.Base):
                 image_meta['properties']['system_snapshot_id'] = \
                     image_meta_system['id']
 
-            if bdm.is_volume:
-                # create snapshot based on volume_id
-                volume = self.volume_api.get(context, bdm.volume_id)
-                # NOTE(yamahata): Should we wait for snapshot creation?
-                #                 Linux LVM snapshot creation completes in
-                #                 short time, it doesn't matter for now.
-                name = _('snapshot for %s') % image_meta['name']
-                LOG.debug('Creating snapshot from volume %s.', volume['id'],
-                          instance=instance)
-                snapshot = self.volume_api.create_snapshot_force(
-                    context, volume['id'], name, volume['display_description'])
-
-                # Wait for new_snapshot to become ready
-                starttime = time.time()
-                deadline = starttime + 100
-                new_snapshot = self.volume_api.get_snapshot(context,
-                                                            snapshot['id'])
-                tries = 0
-                while new_snapshot['status'] != 'available':
-                    tries = tries + 1
-                    now = time.time()
-                    if new_snapshot['status'] == 'error':
-                        msg = _("failed to create new_snapshot")
-                        raise exception.NovaException(reason=msg)
-                    elif now > deadline:
-                        msg = _("timeout creating new_snapshot")
-                        raise exception.NovaException(reason=msg)
-                    else:
-                        time.sleep(tries ** 2)
-                    new_snapshot = self.volume_api.get_snapshot(
-                        context,
-                        new_snapshot['id'])
-
-                mapping_dict = block_device.snapshot_from_bdm(
-                    new_snapshot['id'],
-                    bdm)
-                mapping_dict = mapping_dict.get_image_mapping()
-            else:
                 mapping_dict = bdm.get_image_mapping()
 
-            mapping.append(mapping_dict)
+            if bdm.is_volume:
+                if(bdm.device_name == '/dev/vda'
+                   and properties['system_snapshot'] == "True") or \
+                                bdm.volume_id in volume_snapshot_list:
+                    # create snapshot based on volume_id
+                    # NOTE(yamahata): Should we wait for snapshot creation?
+                    #                 Linux LVM snapshot creation completes in
+                    #                 short time, it doesn't matter for now.
+                    volume = self.volume_api.get(context, bdm.volume_id)
+                    name = _('snapshot for %s') % image_meta['name']
+                    LOG.debug('Creating snapshot from volume %s.',
+                              volume['id'],
+                              instance=instance)
+                    snapshot = self.volume_api.create_snapshot_force(
+                        context, volume['id'], name,
+                        volume['display_description'])
+
+                    # Wait for new_snapshot to become ready
+                    starttime = time.time()
+                    deadline = starttime + 100
+                    new_snapshot = self.volume_api.get_snapshot(context,
+                                                                snapshot['id'])
+                    tries = 0
+                    while new_snapshot['status'] != 'available':
+                        tries = tries + 1
+                        now = time.time()
+                        if new_snapshot['status'] == 'error':
+                            msg = _("failed to create new_snapshot")
+                            raise exception.NovaException(reason=msg)
+                        elif now > deadline:
+                            msg = _("timeout creating new_snapshot")
+                            raise exception.NovaException(reason=msg)
+                        else:
+                            time.sleep(tries ** 2)
+                        new_snapshot = self.volume_api.get_snapshot(
+                            context,
+                            new_snapshot['id'])
+
+                    snapshot_list.append(new_snapshot['id'])
+                    mapping_dict = block_device.snapshot_from_bdm(
+                        new_snapshot['id'],
+                        bdm)
+                    mapping_dict = mapping_dict.get_image_mapping()
+
+            if len(mapping_dict) != 0:
+                mapping.append(mapping_dict)
 
         if mapping:
             properties['block_device_mapping'] = mapping
             properties['bdm_v2'] = True
 
         if memory_snapshot:
-            memory_snapshot_name = _('%s_memory_snapshot') % image_meta['name']
-            memory_image_meta = self._create_image(
-                context,
-                instance,
-                memory_snapshot_name,
-                'snapshot',
-                extra_properties=None)
+            if properties['system_snapshot'] == "True":
+                memory_snapshot_name = _('%s_memory_snapshot') % \
+                                       image_meta['name']
+                memory_image_meta = self._create_image(
+                    context,
+                    instance,
+                    memory_snapshot_name,
+                    'snapshot',
+                    extra_properties=None)
 
-            self.compute_rpcapi.create_memory_snapshot(
-                context,
-                instance,
-                memory_image_meta,
-                mapping,
-                vm_active)
+                self.compute_rpcapi.create_memory_snapshot(
+                    context,
+                    instance,
+                    memory_image_meta,
+                    mapping,
+                    vm_active)
 
-            image_meta['properties']['memory_snapshot_id'] = \
-                memory_image_meta['id']
+                image_meta['properties']['memory_snapshot_id'] = \
+                    memory_image_meta['id']
             image_meta['properties']['snapshot_type'] = 'snapshot_for_online'
         else:
             image_meta['properties']['snapshot_type'] = 'snapshot_for_offline'
 
-            instance.task_state = None
-            instance.save()
+        instance.task_state = None
+        instance.save()
 
         # from image get os_distro and os_version
         for bdm in bdms:
@@ -2627,7 +2639,17 @@ class API(base.Base):
         image_meta['properties']['image_type'] = 'snapshot_for_instance'
         image_meta['properties']['instance_uuid'] = instance['uuid']
 
-        return self.image_api.create(context, image_meta)
+        image_for_instance_info = self.image_api.create(context, image_meta)
+
+        snapshot_metadata = {
+            'instance_id': instance['uuid'],
+            'instance_snapshot_id': image_for_instance_info['id']
+        }
+        for snapshot_id in snapshot_list:
+            self.volume_api.set_metadata(context, snapshot_id,
+                                         snapshot_metadata)
+
+        return image_for_instance_info
 
     @wrap_check_policy
     @check_instance_lock
@@ -4016,6 +4038,9 @@ class API(base.Base):
             snapshot_info['created_at'] = image_meta['created_at']
             snapshot_info['instance_uuid'] = \
                 image_meta['properties']['instance_uuid']
+
+            snapshot_info['system_snapshot'] = \
+                image_meta['properties']['system_snapshot']
 
             if 'os_distro' in image_meta['properties']:
                 snapshot_info['os_distro'] = \
