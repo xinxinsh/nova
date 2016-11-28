@@ -927,10 +927,6 @@ class API(base_api.NetworkAPI):
             raise exception.NovaException(message=message)
 
         ifaces = compute_utils.get_nw_info_for_instance(instance)
-        # sort ports by mac address
-        if len(ifaces) != 0 and 'address' in ifaces[0]:
-            ifaces.sort(key=lambda x: x['address'])
-
         # This code path is only done when refreshing the network_cache
         if port_ids is None:
             port_ids = [iface['id'] for iface in ifaces]
