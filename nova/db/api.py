@@ -1144,6 +1144,11 @@ def quota_class_update(context, class_name, resource, limit):
 ###################
 
 
+def quota_usage_get_by_resource(context, resource):
+    """Retrieve a quota usage of all projects by resource type"""
+    return IMPL.quota_usage_get_by_resource(context, resource)
+
+
 def quota_usage_get(context, project_id, resource, user_id=None):
     """Retrieve a quota usage or raise if it does not exist."""
     return IMPL.quota_usage_get(context, project_id, resource, user_id=user_id)

@@ -3550,6 +3550,18 @@ def quota_class_update(context, class_name, resource, limit):
 
 @require_context
 @main_context_manager.reader
+def quota_usage_get_by_resource(context, resource):
+    query = model_query(context, models.QuotaUsage, read_deleted="no")
+    query = query.filter_by(resource=resource)
+    result = query.all()
+    if result:
+        return sum([x.in_use for x in result])
+    else:
+        return 0
+
+
+@require_context
+@main_context_manager.reader
 def quota_usage_get(context, project_id, resource, user_id=None):
     query = model_query(context, models.QuotaUsage, read_deleted="no").\
                      filter_by(project_id=project_id).\
