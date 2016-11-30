@@ -1278,3 +1278,10 @@ class ComputeAPI(object):
                    instance=instance, port_id=port_id,
                    inbound_kilo_bytes=inbound_kilo_bytes,
                    outbound_kilo_bytes=outbound_kilo_bytes)
+
+    def clone_instance(self, ctxt, instance, from_inst, host=None):
+        version = '4.0'
+        cctxt = self.client.prepare(
+                server=_compute_host(host, instance), version=version)
+        return cctxt.call(ctxt, 'clone_instance',
+                          instance=instance, from_inst=from_inst)

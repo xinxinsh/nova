@@ -4669,6 +4669,17 @@ class ComputeManager(manager.Manager):
 
         return connect_info
 
+    @wrap_exception()
+    @wrap_instance_fault
+    def clone_instance(self, context, instance, from_inst):
+        """Return connection information for a vnc console."""
+        if CONF.libvirt.images_type == 'rbd':
+            self.driver.clone_instance(context, instance, from_inst)
+        else:
+            raise NotImplementedError(_('clone_instance is not '
+                                        'implemented by image_type %(type)s') %
+                                        {'type': CONF.libvirt.images_type})
+
     @messaging.expected_exceptions(exception.ConsoleTypeInvalid,
                                    exception.InstanceNotReady,
                                    exception.InstanceNotFound,

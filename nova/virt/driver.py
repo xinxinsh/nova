@@ -1694,6 +1694,16 @@ class ComputeDriver(object):
         """Set network interface bandwidth."""
         raise NotImplementedError()
 
+    def clone_instance(self, context, instance, from_inst):
+        """clone disk from given instance.
+
+        :param context:  request context
+        :param instance: nova.objects.instance.Instance
+        :param from_inst: given instance uuid
+        :returns: None
+        """
+        raise NotImplementedError()
+
 
 def load_compute_driver(virtapi, compute_driver=None):
     """Load a compute driver module.

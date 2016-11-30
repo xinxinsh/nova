@@ -8739,3 +8739,11 @@ class LibvirtDriver(driver.ComputeDriver):
         self._core.set_interface_bandwidth(instance, vif,
                                            inbound_kilo_bytes,
                                            outbound_kilo_bytes)
+
+    def clone_instance(self, context, instance, from_inst):
+        self._destroy(instance)
+        rbd_utils = self._get_rbd_driver()
+        instance_disk = instance.uuid + "_disk"
+        if rbd_utils.exists(instance_disk):
+            rbd_utils.remove_image(instance_disk)
+        rbd_utils.copy(from_inst + "_disk", instance.uuid + "_disk")

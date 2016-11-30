@@ -209,6 +209,10 @@ class RBDDriver(object):
                       dict(loc=url, err=e))
             return False
 
+    def copy(self, image_name, dest_name):
+        with RBDVolumeProxy(self, image_name) as vol:
+            vol.copy(vol.ioctx, dest_name)
+
     def clone(self, image_location, dest_name, dest_pool=None):
         _fsid, pool, image, snapshot = self.parse_url(
                 image_location['url'])

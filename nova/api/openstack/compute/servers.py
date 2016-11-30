@@ -840,6 +840,59 @@ class ServersController(wsgi.Controller):
             msg = _("Instance could not be found")
             raise exc.HTTPNotFound(explanation=msg)
 
+    def _get_bootable_volume(self, context, id):
+        bdms = objects.BlockDeviceMappingList. \
+                        bdms_by_instance_uuid(context, [id])
+        bdms = bdms.get(id, [])
+        # if the instance is booted from volume
+        bootable_volume = [bdm for bdm in bdms
+               if bdm.get('device_name', '').split('/')[-1] in ['vda', 'sda']]
+
+        if not bootable_volume:
+            msg = _("Instance %(id)s not found bootable volume.") % {"id": id}
+            raise exception.InvalidVolume(reason=msg)
+
+        return bootable_volume[0]
+
+    @wsgi.response(204)
+    @extensions.expected_errors((400, 404, 409))
+    @wsgi.action('clone')
+    def _action_clone(self, req, id, body):
+        context = req.environ['nova.context']
+        authorize(context, action='clone')
+        # Get host from body
+        server_dict = body['clone']
+
+        instance = self._get_server(context, req, id)
+        forced_host = instance.host
+        if server_dict.get("forced_host", None):
+            forced_host = server_dict.get("forced_host")
+
+        instance_type = instance.flavor
+        image_uuid = instance.image_ref
+
+        # (fixme), zhouxbj, ugly
+        requested_networks = [{'uuid': net.get('network').get('id')}
+            for net in instance.info_cache.network_info
+            if net.get('network').get('id', None)]
+
+        if requested_networks is not None:
+            requested_networks = self._get_requested_networks(
+                requested_networks)
+
+        kwargs = dict(availability_zone='nova',
+                      forced_host=forced_host,
+                      requested_networks=requested_networks,
+                      display_name=instance.display_name + '_clone')
+
+        bdm_info = {}
+        # if boot from volume
+        if not image_uuid:
+            bdm_info = self._get_bootable_volume(context, id)
+
+        self.compute_api.clone_instance(context, id, instance_type, image_uuid,
+                                        bdm_info=bdm_info, **kwargs)
+
     # NOTE(gmann): Returns 204 for backwards compatibility but should be 202
     # for representing async API as this API just accepts the request and
     # request hypervisor driver to complete the same in async mode.

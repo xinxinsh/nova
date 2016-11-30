@@ -503,6 +503,25 @@ class API(object):
         except cinder_exception.OverLimit:
             raise exception.OverQuota(overs='volumes')
 
+    @translate_cinder_exception
+    def clone(self, context, size, name, source_volid):
+        client = cinderclient(context)
+        kwargs = dict(volume_type='rbd',
+                      user_id=context.user_id,
+                      project_id=context.project_id,
+                      source_volid=source_volid)
+
+        if isinstance(client, v1_client.Client):
+            kwargs['display_name'] = name
+        else:
+            kwargs['name'] = name
+
+        try:
+            item = client.volumes.create(size, **kwargs)
+            return _untranslate_volume_summary_view(context, item)
+        except cinder_exception.OverLimit:
+            raise exception.OverQuota(overs='volumes')
+
     @translate_volume_exception
     def delete(self, context, volume_id):
         cinderclient(context).volumes.delete(volume_id)

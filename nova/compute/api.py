@@ -29,6 +29,7 @@ import uuid
 
 from oslo_log import log as logging
 from oslo_serialization import jsonutils
+from oslo_service import loopingcall
 from oslo_utils import excutils
 from oslo_utils import strutils
 from oslo_utils import timeutils
@@ -1506,6 +1507,56 @@ class API(base.Base):
                 msg = _("max_count cannot be greater than 1 if an fixed_ip "
                         "is specified.")
                 raise exception.InvalidFixedIpAndMaxCountRequest(reason=msg)
+
+    def _wait_for_avail(self, context, volume_id):
+        volume = self.volume_api.get(context, volume_id)
+        if volume.get('status', None) == 'available':
+            raise loopingcall.LoopingCallDone()
+
+    def _wait_for_running(self, instance):
+        if instance.vm_state == 'active':
+            raise loopingcall.LoopingCallDone()
+        instance.refresh()
+
+    def clone_instance(self, context, id, instance_type, image_href,
+                       bdm_info=None, **kwargs):
+        if image_href:
+            new_instance = self.create(context, instance_type,
+                                       image_href, **kwargs)
+            timer = loopingcall. \
+                        FixedIntervalLoopingCall(self._wait_for_running,
+                                                 new_instance[0][0])
+            timer.start(interval=0.5).wait()
+
+            if kwargs.get('forced_host', None):
+                forced_host = kwargs.get('forced_host')
+            # copy rbd disk from instance
+            self.compute_rpcapi.clone_instance(context,
+                                               instance=new_instance[0][0],
+                                               from_inst=id,
+                                               host=forced_host)
+        else:
+            volume_id = bdm_info.volume_id
+            volume_size = bdm_info.volume_size
+            volume_name = volume_id.split('-')[0] + "_clone"
+            # (fixme), try catch exception
+            new_volume = self.volume_api.clone(context, int(volume_size),
+                                               volume_name,
+                                               volume_id)
+            timer = loopingcall. \
+                        FixedIntervalLoopingCall(self._wait_for_avail,
+                                                 context,
+                                                 new_volume.get('id'))
+            timer.start(interval=0.5).wait()
+
+            bdp = [
+                       dict(device_name='vda',
+                            delete_on_termination=False,
+                            volume_id=new_volume.get('id'))]
+            new_instance = self.create(context, instance_type,
+                                       image_href,
+                                       block_device_mapping=bdp,
+                                       **kwargs)
 
     @hooks.add_hook("create_instance")
     def create(self, context, instance_type,
