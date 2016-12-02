@@ -156,7 +156,10 @@ compute_opts = [
                     'image_volume_cache_enabled configuration option.'),
     cfg.ListOpt('iso_path',
                default='/mnt/iso',
-               help='List of ISO path')
+               help='List of ISO path'),
+    cfg.BoolOpt('flavor_force_new',
+                default=False,
+                help="Force create new flavor when do live resize action."),
     ]
 
 interval_opts = [
@@ -7547,7 +7550,9 @@ class ComputeManager(manager.Manager):
     # chinac-only start
     # def _create_instance_type(self,context,instance,ins_type={},**kwargs):
     def _create_instance_type(self, context, instance,
-                              ins_type=None, **kwargs):
+                              ins_type=None,
+                              force_create=CONF.flavor_force_new,
+                              **kwargs):
         """Create instance type or use former one
 
         :param ins_type: dict type, which will overlap kwargs
@@ -7584,24 +7589,32 @@ class ComputeManager(manager.Manager):
         new_type_mem = ins_type.get('memory_mb', False) or \
                     (old_type_mem + int(incre_mem))
 
-        # get all flavor info with extra_specs
-        ty_list = flavors.get_all_flavors_sorted_list(context,
-                                            filters={'extra_specs': True})
         ty_dict = {}
-        # check instance new flavor info whether existed or not,
-        # and reuse the {sha224_id:Flavor()} dict when necessary
-        ty_list = [ty_dict.update(
-                  {ty.extra_specs.get('lr_sha224'): ty})
-                  for ty in ty_list if ty.extra_specs.get('lr_sha224', False)]
+        # (patch) no need fetch all flavors when we force create one
+        # get all flavor info with extra_specs
+        if not force_create:
+            ty_list = flavors.get_all_flavors_sorted_list(context,
+                                                filters={'extra_specs': True})
+            # check instance new flavor info whether existed or not,
+            # and reuse the {sha224_id:Flavor()} dict when necessary
+            ty_list = [ty_dict.update(
+                      {ty.extra_specs.get('lr_sha224'): ty})
+                      for ty in ty_list
+                      if ty.extra_specs.get('lr_sha224', False)]
 
         # (zhouxbj) use join later
         new_ty_name = 'lr_auto_' + str(new_type_vcpus) + \
                      '_' + str(new_type_mem)
 
+        # flavor should have diff name
+        if force_create:
+            tstamp = time.strftime('%Y%m%d%H%M%S', time.localtime())
+            new_ty_name = new_ty_name + '_' + tstamp
+
         new_ty_sha = hashlib.sha224(new_ty_name).hexdigest()
 
         # if get nothing, create one
-        if not ty_dict.get(new_ty_sha, None):
+        if force_create or (not ty_dict.get(new_ty_sha, None)):
             # inherit old type meta
             old_type_meta.update(dict(lr_sha224=new_ty_sha))
             try:
@@ -7609,7 +7622,7 @@ class ComputeManager(manager.Manager):
                                             new_type_mem,
                                             new_type_vcpus,
                                             root_gb=instance.flavor.root_gb,
-                               extra_specs=old_type_meta)
+                                            extra_specs=old_type_meta)
             except Exception:
                 LOG.info(_LW("Instance flavor %s Created Failed."
                          "Please contact administrator."), new_ty_name)
