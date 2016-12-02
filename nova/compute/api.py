@@ -4359,6 +4359,20 @@ class API(base.Base):
         """Get bandwidth for an instance interface."""
         return bandwidth_obj.Bandwidth.get_by_port_id(context, port_id)
 
+    @wrap_check_policy
+    def image_rollback(self, context, instance, system_snapshot_id):
+        """Create a new system disk from the given image and replace the old"""
+
+        image_service = glance.get_default_image_service()
+        image_meta = image_service.show(context, system_snapshot_id)
+        if image_meta['status'] != 'active':
+            raise exception.ImageNotActive(image_id=system_snapshot_id)
+
+        if image_meta['id'] == instance.image_ref:
+            raise exception.InvalidImageRef(image_href=system_snapshot_id)
+
+        self.compute_rpcapi.image_rollback(context, instance, image_meta)
+
 
 class HostAPI(base.Base):
     """Sub-set of the Compute Manager API for managing host operations."""

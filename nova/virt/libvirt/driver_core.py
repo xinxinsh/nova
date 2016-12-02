@@ -39,6 +39,7 @@ from oslo_log import log as logging
 from oslo_serialization import jsonutils
 from oslo_utils import excutils
 from oslo_utils import strutils
+from oslo_utils import units
 from six.moves import range
 
 from nova.api.metadata import base as instance_metadata
@@ -62,6 +63,7 @@ from nova.virt import event as virtevent
 from nova.virt.libvirt import config as vconfig
 from nova.virt.libvirt import host
 from nova.virt.libvirt import imagebackend
+from nova.virt.libvirt import imagecache
 from nova.virt.libvirt import utils as libvirt_utils
 from nova.virt.libvirt import vif as libvirt_vif
 from nova import volume
@@ -1098,3 +1100,108 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
                 LOG.error(_('setting network interface bandwidth '
                             'failed.'), instance=instance)
             raise exception.SetInterfaceBandwidthFailed(instance)
+
+    def _try_fetch_image_cache(self, image, fetch_func, context, filename,
+                               image_id, instance, size,
+                               fallback_from_host=None):
+        try:
+            image.cache(fetch_func=fetch_func,
+                        context=context,
+                        filename=filename,
+                        image_id=image_id,
+                        user_id=instance.user_id,
+                        project_id=instance.project_id,
+                        size=size)
+        except exception.ImageNotFound:
+            if not fallback_from_host:
+                raise
+            LOG.debug("Image %(image_id)s doesn't exist anymore "
+                      "on image service, attempting to copy "
+                      "image from %(host)s",
+                      {'image_id': image_id, 'host': fallback_from_host},
+                      instance=instance)
+
+            def copy_from_host(target, max_size):
+                libvirt_utils.copy_image(src=target,
+                                         dest=target,
+                                         host=fallback_from_host,
+                                         receive=True)
+            image.cache(fetch_func=copy_from_host,
+                        filename=filename)
+
+    def image_rollback(self, context, instance, image_meta):
+        LOG.info(_LI('Image_rollback from the given image:%(image)s '
+                     'and replace the old.'),
+                 {'image': image_meta['id']}, instance=instance)
+
+        LOG.info(_LI('Image_rollback from the given image:%(image)s '
+                     'and replace the old.'),
+                 {'image': image_meta['id']}, instance=instance)
+
+        suffix = ''
+        image_type = CONF.libvirt.images_type
+
+        disk_images = {'image_id': image_meta['id'],
+                       'kernel_id': instance.kernel_id,
+                       'ramdisk_id': instance.ramdisk_id}
+
+        disk_path = libvirt_utils.get_instance_path(instance)
+        disk_file_bak = os.path.join(disk_path, 'disk_bak')
+        disk_file = os.path.join(disk_path, 'disk')
+
+        try:
+            # backup old disk file
+            if os.path.exists(disk_file_bak):
+                libvirt_utils.file_delete(disk_file_bak)
+            if os.path.exists(disk_file):
+                libvirt_utils.file_rename(disk_file, disk_file_bak)
+
+            # NOTE(ndipanov): Even if disk_mapping was passed in, which
+            # currently happens only on rescue - we still don't want to
+            # create a base image.
+            root_fname = imagecache.get_cache_fname(disk_images, 'image_id')
+            size = instance.root_gb * units.Gi
+
+            backend = self.image_backend.image(instance, 'disk' + suffix,
+                                               image_type)
+            if backend.SUPPORTS_CLONE:
+                def clone_fallback_to_fetch(*args, **kwargs):
+                    try:
+                        backend.clone(context, disk_images['image_id'])
+                    except exception.ImageUnacceptable:
+                        libvirt_utils.fetch_image(*args, **kwargs)
+                fetch_func = clone_fallback_to_fetch
+            else:
+                fetch_func = libvirt_utils.fetch_image
+            self._try_fetch_image_cache(backend, fetch_func, context,
+                                        root_fname, disk_images['image_id'],
+                                        instance, size,
+                                        fallback_from_host=None)
+
+            libvirt_utils.chown(disk_file, 'qemu:qemu')
+        except Exception:
+            instance.task_state = None
+            instance.save()
+            if os.path.exists(disk_file_bak):
+                libvirt_utils.file_rename(disk_file_bak, disk_file)
+            msg = _('Instance:%s image_rollback error') % instance.uuid
+            raise exception.NovaException(msg)
+
+        # update database
+        # 1. update instances and instance_system_metadata
+        instance.image_ref = image_meta['id']
+        instance.system_metadata.update({'image_base_image_ref':
+                                             image_meta['id']})
+        instance.save()
+
+        # 2. update block_device_mapping
+        bdms = objects.BlockDeviceMappingList.get_by_instance_uuid(
+            context, instance.uuid)
+        for bdm in bdms:
+            if bdm.no_device:
+                continue
+            if bdm.device_name == '/dev/vda':
+                bdm.image_id = image_meta['id']
+                bdm.save()
+
+        LOG.info(_LI('Image_rollback sucessfully'), instance=instance)

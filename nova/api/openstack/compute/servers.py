@@ -1369,6 +1369,47 @@ class ServersController(wsgi.Controller):
 
         return webob.Response(status_int=202)
 
+    @wsgi.response(202)
+    @wsgi.action('os-image_rollback')
+    def image_rollback(self, req, id, body):
+        """Create a new system disk from the given image and replace the old"""
+
+        context = req.environ['nova.context']
+        authorize(context)
+
+        if not self.is_valid_body(body, 'os-image_rollback'):
+            msg = (_("Missing required element '%s' in request body") %
+                   'os-image_rollback')
+            raise exc.HTTPBadRequest(explanation=msg)
+
+        image_rollback = body.get("os-image_rollback", {})
+        system_snapshot_id = image_rollback.get("system_snapshot_id")
+        if not system_snapshot_id:
+            msg = _("Missing 'system_snapshot_id'")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
+
+        instance = common.get_instance(self.compute_api, context, id)
+
+        if instance.vm_state != vm_states.STOPPED \
+                or instance.task_state is not None:
+            raise exception.InstanceNotReady(instance_id=instance.uuid)
+
+        bdms = objects.BlockDeviceMappingList.get_by_instance_uuid(
+            context, instance.uuid)
+        if self.compute_api.is_volume_backed_instance(context,
+                                                      instance,
+                                                      bdms):
+            msg = (_("Instance:'%s' is not boot from image") % instance.uuid)
+            raise exc.HTTPBadRequest(explanation=msg)
+
+        try:
+            self.compute_api.image_rollback(context, instance,
+                                            system_snapshot_id)
+        except exception.NovaException as e:
+            raise exc.HTTPBadRequest(explanation=e.format_message())
+
+        return webob.Response(status_int=202)
+
 
 def remove_invalid_options(context, search_options, allowed_search_options):
     """Remove search options that are not valid for non-admin API/context."""

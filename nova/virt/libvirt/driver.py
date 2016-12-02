@@ -8747,3 +8747,6 @@ class LibvirtDriver(driver.ComputeDriver):
         if rbd_utils.exists(instance_disk):
             rbd_utils.remove_image(instance_disk)
         rbd_utils.copy(from_inst + "_disk", instance.uuid + "_disk")
+
+    def image_rollback(self, context, instance, image_meta):
+        self._core.image_rollback(context, instance, image_meta)

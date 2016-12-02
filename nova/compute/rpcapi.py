@@ -1285,3 +1285,11 @@ class ComputeAPI(object):
                 server=_compute_host(host, instance), version=version)
         return cctxt.call(ctxt, 'clone_instance',
                           instance=instance, from_inst=from_inst)
+
+    def image_rollback(self, ctxt, instance, image_meta):
+        version = '4.6'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                                    version=version)
+        cctxt.call(ctxt, 'image_rollback',
+                   instance=instance,
+                   image_meta=image_meta)

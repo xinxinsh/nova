@@ -331,6 +331,16 @@ def file_delete(path):
     return os.unlink(path)
 
 
+def file_rename(file_src, file_dst):
+    """rename file
+
+    Note: The reason this is kept in a separate module is to easily
+          be able to provide a stub module that doesn't alter system
+          state at all (for unit tests)
+    """
+    return os.rename(file_src, file_dst)
+
+
 def path_exists(path):
     """Returns if path exists
 

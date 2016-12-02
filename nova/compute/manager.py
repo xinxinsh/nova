@@ -7636,3 +7636,17 @@ class ComputeManager(manager.Manager):
         return None
 
     # chinac-only end
+
+    @wrap_exception()
+    def image_rollback(self, context, instance, image_meta):
+        """Create a new system disk from the given image and replace the
+        old, while the instance boot from image.
+        """
+
+        instance.task_state = task_states.ROLLING_SNAPSHOT_BACK
+        instance.save()
+
+        self.driver.image_rollback(context, instance, image_meta)
+
+        instance.task_state = None
+        instance.save()
