@@ -646,13 +646,36 @@ class LibvirtDriver(driver.ComputeDriver):
                 self._disk_cachemode = "writethrough"
         return self._disk_cachemode
 
-    def _set_cache_mode(self, conf):
+    # need context for cinder auth
+    def _set_cache_mode(self, context, conf):
         """Set cache mode on LibvirtConfigGuestDisk object."""
         try:
             source_type = conf.source_type
             driver_cache = conf.driver_cache
         except AttributeError:
             return
+
+        # chinac changed this flow
+        # get disk cache mode from volume type
+        try:
+            # get volume_type info from volume by volume_id
+            volume_api = self._volume_api
+            volume_id = conf.serial
+            volume_type = volume_api.get(context, volume_id)['volume_type_id']
+            volume_type_info = volume_api.get_volume_type(context, volume_type)
+            # get type extra_specs
+            if 'disk_cache_mode' in volume_type_info['extra_specs'].keys():
+                driver_cache = volume_type_info['extra_specs'][
+                                             'disk_cache_mode']
+                LOG.info(_LI("Set volume %(volume_id)s  cache mode "
+                             "%(driver_cache)s volume type success"),
+                             {'volume_id': volume_id,
+                              'driver_cache': driver_cache})
+        except Exception as e:
+            LOG.warn(_LW('Set cache mode by volume type %(error)s '
+                         'If volume has not volumetype this '
+                         'message can be ignore'),
+                         {'error': six.text_type(e)})
 
         cache_mode = self.disk_cachemodes.get(source_type,
                                               driver_cache)
@@ -1450,7 +1473,7 @@ class LibvirtDriver(driver.ComputeDriver):
             instance, CONF.libvirt.virt_type, instance.image_meta, bdm)
         self._connect_volume(connection_info, disk_info)
         conf = self._get_volume_config(connection_info, disk_info)
-        self._set_cache_mode(conf)
+        self._set_cache_mode(context, conf)
 
         self._check_discard_for_attach_volume(conf, instance)
 
@@ -4016,7 +4039,7 @@ class LibvirtDriver(driver.ComputeDriver):
                                          image_type)
         return image.libvirt_fs_info("/", "ploop")
 
-    def _get_guest_storage_config(self, instance, image_meta,
+    def _get_guest_storage_config(self, context, instance, image_meta,
                                   disk_info,
                                   rescue, block_device_info,
                                   inst_type, os_type):
@@ -4103,7 +4126,7 @@ class LibvirtDriver(driver.ComputeDriver):
             vol.save()
 
         for d in devices:
-            self._set_cache_mode(d)
+            self._set_cache_mode(context, d)
 
         if image_meta.properties.get('hw_scsi_model'):
             hw_scsi_model = image_meta.properties.hw_scsi_model
@@ -5056,7 +5079,7 @@ class LibvirtDriver(driver.ComputeDriver):
         self._set_clock(context, instance, block_device_info,
                         guest, instance.os_type, image_meta, virt_type)
 
-        storage_configs = self._get_guest_storage_config(
+        storage_configs = self._get_guest_storage_config(context,
                 instance, image_meta, disk_info, rescue, block_device_info,
                 flavor, guest.os_type)
         for config in storage_configs:
@@ -5261,7 +5284,7 @@ class LibvirtDriver(driver.ComputeDriver):
         self._set_clock(context, instance, block_device_info,
                         guest, instance.os_type, image_meta, virt_type)
 
-        storage_configs = self._get_guest_storage_config(
+        storage_configs = self._get_guest_storage_config(context,
                 instance, image_meta, disk_info, rescue, block_device_info,
                 flavor, guest.os_type)
         for config in storage_configs:

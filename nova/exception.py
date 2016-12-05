@@ -627,6 +627,11 @@ class VolumeNotFound(NotFound):
     msg_fmt = _("Volume %(volume_id)s could not be found.")
 
 
+class VolumeTypeNotFound(NotFound):
+    ec2_code = 'InvalidVolumeType.NotFound'
+    msg_fmt = _("Volume Type %(volume_type)s could not be found.")
+
+
 class UndefinedRootBDM(NovaException):
     msg_fmt = _("Undefined Block Device Mapping root: BlockDeviceMappingList "
                 "contains Block Device Mappings from multiple instances.")

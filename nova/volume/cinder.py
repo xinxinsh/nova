@@ -198,6 +198,19 @@ def _untranslate_volume_summary_view(context, vol):
     return d
 
 
+def _untranslate_volume_type_summary_view(context, volume_type):
+    """Maps keys for volumes type summary view."""
+    d = {}
+    d['id'] = volume_type.id
+    d['name'] = volume_type.name
+    d['is_public'] = volume_type.is_public
+    d['description'] = volume_type.description
+    d['extra_specs'] = {}
+    for key, value in volume_type.extra_specs.items():
+        d['extra_specs'][key] = value
+    return d
+
+
 def _untranslate_snapshot_summary_view(context, snapshot):
     """Maps keys for snapshots summary view."""
     d = {}
@@ -286,6 +299,25 @@ def translate_volume_exception(method):
             if isinstance(exc_value, (keystone_exception.NotFound,
                                       cinder_exception.NotFound)):
                 exc_value = exception.VolumeNotFound(volume_id=volume_id)
+            six.reraise(exc_value, None, exc_trace)
+        return res
+    return translate_cinder_exception(wrapper)
+
+
+def translate_volume_type_exception(method):
+    """Transforms the exception for the volume type
+       but keeps its traceback intact.
+    """
+    def wrapper(self, ctx, volume_type, *args, **kwargs):
+        try:
+            res = method(self, ctx, volume_type, *args, **kwargs)
+        except (cinder_exception.ClientException,
+                keystone_exception.ClientException):
+            exc_type, exc_value, exc_trace = sys.exc_info()
+            if isinstance(exc_value, (keystone_exception.NotFound,
+                                      cinder_exception.NotFound)):
+                exc_value = exception.\
+                        VolumeTypeNotFound(volume_type=volume_type)
             six.reraise(exc_value, None, exc_trace)
         return res
     return translate_cinder_exception(wrapper)
@@ -529,6 +561,20 @@ class API(object):
     @translate_volume_exception
     def update(self, context, volume_id, fields):
         raise NotImplementedError()
+
+    # chinac add this mathod to get volume_type info
+    @translate_volume_type_exception
+    def get_volume_type(self, context, volume_type):
+        # because there is no method to get volume_type by name
+        # so we get volume_type_list and get volume_type_id
+        # dest_item = cinderclient(context).volume_types.get(volume_type)
+        items = cinderclient(context).volume_types.list(search_opts=None,
+                                                        is_public=None)
+        dest_item = {}
+        for item in items:
+            if item.name == volume_type:
+                dest_item = item
+        return _untranslate_volume_type_summary_view(context, dest_item)
 
     @translate_snapshot_exception
     def get_snapshot(self, context, snapshot_id):

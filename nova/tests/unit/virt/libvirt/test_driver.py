@@ -5603,7 +5603,7 @@ class LibvirtConnTestCase(test.NoDBTestCase):
                     connection_info, disk_info)
                 mock_get_volume_config.assert_called_with(
                     connection_info, disk_info)
-                mock_set_cache_mode.assert_called_with(mock_conf)
+                mock_set_cache_mode.assert_called_with(self.context, mock_conf)
                 mock_dom.attachDeviceFlags.assert_called_with(
                     mock_conf.to_xml(), flags=flags)
                 mock_check_discard.assert_called_with(mock_conf, instance)
@@ -11959,7 +11959,7 @@ class LibvirtConnTestCase(test.NoDBTestCase):
         fake_conf = FakeConfigGuestDisk()
 
         fake_conf.source_type = 'file'
-        drvr._set_cache_mode(fake_conf)
+        drvr._set_cache_mode(self.context, fake_conf)
         self.assertEqual(fake_conf.driver_cache, 'directsync')
 
     def test_set_cache_mode_invalid_mode(self):
@@ -11968,7 +11968,7 @@ class LibvirtConnTestCase(test.NoDBTestCase):
         fake_conf = FakeConfigGuestDisk()
 
         fake_conf.source_type = 'file'
-        drvr._set_cache_mode(fake_conf)
+        drvr._set_cache_mode(self.context, fake_conf)
         self.assertIsNone(fake_conf.driver_cache)
 
     def test_set_cache_mode_invalid_object(self):
@@ -11977,7 +11977,7 @@ class LibvirtConnTestCase(test.NoDBTestCase):
         fake_conf = FakeConfigGuest()
 
         fake_conf.driver_cache = 'fake'
-        drvr._set_cache_mode(fake_conf)
+        drvr._set_cache_mode(self.context, fake_conf)
         self.assertEqual(fake_conf.driver_cache, 'fake')
 
     @mock.patch('os.unlink')
@@ -12957,7 +12957,8 @@ class LibvirtConnTestCase(test.NoDBTestCase):
                               return_value=mock_conf),
             mock.patch.object(drvr, '_set_cache_mode')
         ) as (volume_save, connect_volume, get_volume_config, set_cache_mode):
-            devices = drvr._get_guest_storage_config(instance, image_meta,
+            devices = drvr._get_guest_storage_config(self.context,
+                instance, image_meta,
                 disk_info, False, bdi, flavor, "hvm")
 
             self.assertEqual(7, len(devices))
