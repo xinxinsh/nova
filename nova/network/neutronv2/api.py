@@ -1191,9 +1191,13 @@ class API(base_api.NetworkAPI):
                                            neutron_client=neutron)
                     if port.get('device_id', None):
                         raise exception.PortInUse(port_id=request.port_id)
-                    if not port.get('fixed_ips'):
-                        raise exception.PortRequiresFixedIP(
-                            port_id=request.port_id)
+                    # chinac changed this flow
+                    # for not effect neutron code
+                    # just remove this method
+                    # openstack patch https://review.openstack.org/#/c/299591/
+                    # if not port.get('fixed_ips'):
+                    #    raise exception.PortRequiresFixedIP(
+                    #        port_id=request.port_id)
                     request.network_id = port['network_id']
                 else:
                     ports_needed_per_instance += 1

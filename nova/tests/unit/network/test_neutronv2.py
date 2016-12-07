@@ -1732,9 +1732,11 @@ class TestNeutronv2(TestNeutronv2Base):
         self.mox.ReplayAll()
 
         api = neutronapi.API()
-        self.assertRaises(exception.PortRequiresFixedIP,
-                          api.validate_networks,
-                          self.context, requested_networks, 1)
+        # chinac change this flow
+        api.validate_networks(self.context, requested_networks, 1)
+        # self.assertRaises(exception.PortRequiresFixedIP,
+        #                  api.validate_networks,
+        #                  self.context, requested_networks, 1)
 
     def test_validate_networks_no_subnet_id(self):
         requested_networks = objects.NetworkRequestList(
