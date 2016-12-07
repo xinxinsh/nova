@@ -713,6 +713,8 @@ class LibvirtConfigGuestDisk(LibvirtConfigGuestDevice):
         self.driver_name = None
         self.driver_format = None
         self.driver_cache = None
+        self.driver_cdp = None
+        self.driver_cdpHeader = None
         self.driver_discard = None
         self.driver_io = None
         self.source_path = None
@@ -756,6 +758,10 @@ class LibvirtConfigGuestDisk(LibvirtConfigGuestDevice):
                 drv.set("type", self.driver_format)
             if self.driver_cache is not None:
                 drv.set("cache", self.driver_cache)
+            if self.driver_cdp is not None and self.driver_cdp == "on":
+                drv.set("cdp", self.driver_cdp)
+                if self.driver_cdpHeader is not None:
+                    drv.set("cdpHeader", self.driver_cdpHeader)
             if self.driver_discard is not None:
                 drv.set("discard", self.driver_discard)
             if self.driver_io is not None:
@@ -856,6 +862,8 @@ class LibvirtConfigGuestDisk(LibvirtConfigGuestDevice):
                 self.driver_name = c.get('name')
                 self.driver_format = c.get('type')
                 self.driver_cache = c.get('cache')
+                self.driver_cdp = c.get('cdp')
+                self.driver_cdpHeader = c.get('cdpHeader')
                 self.driver_discard = c.get('discard')
                 self.driver_io = c.get('io')
             elif c.tag == 'source':
@@ -952,6 +960,8 @@ class LibvirtConfigGuestSnapshotDisk(LibvirtConfigObject):
         self.driver_name = None
         self.driver_format = None
         self.driver_cache = None
+        self.driver_cdp = None
+        self.driver_cdpHeader = None
         self.source_path = None
         self.source_protocol = None
         self.source_name = None
@@ -988,6 +998,8 @@ class LibvirtConfigGuestSnapshotDisk(LibvirtConfigObject):
                     drv.set("type", self.driver_format)
                 if self.driver_cache is not None:
                     drv.set("cache", self.driver_cache)
+                if self.driver_cdp is not None:
+                    drv.set("cdp", self.driver_cdp)
                 dev.append(drv)
 
         if self.source_type == "file":
@@ -1035,6 +1047,7 @@ class LibvirtConfigGuestSnapshotDisk(LibvirtConfigObject):
                 self.driver_name = c.get('name')
                 self.driver_format = c.get('type')
                 self.driver_cache = c.get('cache')
+                self.driver_cdp = c.get('cdp')
             elif c.tag == 'source':
                 if self.source_type == 'file':
                     self.source_path = c.get('file')
