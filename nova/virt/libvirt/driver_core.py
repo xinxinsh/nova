@@ -806,7 +806,7 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
         try:
             uri = 'http://%s:%s' % (CONF.qga_proxy.qga_proxy_host,
                                     CONF.qga_proxy.qga_proxy_port)
-            headers = {'TIMEOUT': 20, 'Content-Type': 'application/json'}
+            headers = {'TIMEOUT': 10, 'Content-Type': 'application/json'}
 
             recv = utils.http_post(uri, jsonutils.dumps(post_data), headers)
             body = recv.read().strip()

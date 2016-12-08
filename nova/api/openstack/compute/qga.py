@@ -178,23 +178,26 @@ class GetuptimeController(wsgi.Controller):
             raise exc.HTTPBadRequest(explanation=e)
 
         for s in servers:
-            instance = common.get_instance(self.compute_api, context,
-                                           s['server_id'])
+            try:
+                instance = common.get_instance(self.compute_api, context,
+                                               s['server_id'])
 
-            if instance.vm_state != 'active':
-                ret = {
-                    'return': {
-                        'vm_uuid': instance.uuid,
-                        'vm_status': instance.vm_state,
-                        'msg': 'instance %s vm_status is not \'active\''
-                               % instance.uuid,
-                        'value': ''
+                if instance.vm_state != 'active':
+                    ret = {
+                        'return': {
+                            'vm_uuid': instance.uuid,
+                            'vm_status': instance.vm_state,
+                            'msg': 'instance %s vm_status is not \'active\''
+                                   % instance.uuid,
+                            'value': ''
+                        }
                     }
-                }
-                result.append(ret)
-            else:
-                if instance.host in datas:
-                    datas[instance.host].append(s)
+                    result.append(ret)
+                else:
+                    if instance.host in datas:
+                        datas[instance.host].append(s)
+            except Exception:
+                LOG.error(_('Instance is not found:%s') % s)
 
         rets = []
         try:

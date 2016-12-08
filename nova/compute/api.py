@@ -4368,9 +4368,6 @@ class API(base.Base):
         if image_meta['status'] != 'active':
             raise exception.ImageNotActive(image_id=system_snapshot_id)
 
-        if image_meta['id'] == instance.image_ref:
-            raise exception.InvalidImageRef(image_href=system_snapshot_id)
-
         self.compute_rpcapi.image_rollback(context, instance, image_meta)
 
 
