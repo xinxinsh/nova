@@ -369,6 +369,9 @@ class VolumeAttachmentController(wsgi.Controller):
     def create(self, req, server_id, body):
         """Attach a volume to an instance."""
         context = req.environ['nova.context']
+        # chinac-only start
+        context.instance_uuid = server_id
+        # chinac-only end
         authorize(context)
         authorize_attach(context, action='create')
 
@@ -469,6 +472,9 @@ class VolumeAttachmentController(wsgi.Controller):
     def delete(self, req, server_id, id):
         """Detach a volume from an instance."""
         context = req.environ['nova.context']
+        # chinac-only start
+        context.instance_uuid = server_id
+        # chinac-only end
         authorize(context)
         authorize_attach(context, action='delete')
 
