@@ -7458,38 +7458,44 @@ class ComputeManager(manager.Manager):
     @wrap_exception()
     @reverts_task_state
     def rollback_to_snapshot(self, context, instance, image_meta,
-                             is_rollback_memory, auto_start,
-                             rollback_snapshot_list):
+                             is_rollback_memory=False, auto_start=True,
+                             rollback_snapshot_list=None):
         instance.task_state = task_states.ROLLING_SNAPSHOT_BACK
         instance.save()
 
         # set instance task state to None,but not save to mysql,temp
         instance.task_state = None
+        rollback_snapshot_list = rollback_snapshot_list or []
 
         for disk in rollback_snapshot_list:
             disk_snapshot_id = disk.get('disk_snapshot_id')
             device_name = disk.get('device_name')
             source_volume_id = disk.get('source_volume_id')
-            volume = self.volume_api.get(context, source_volume_id)
-            if volume.get('status') == 'in-use':
-                LOG.debug('detach volume(%s) from instance(%s)',
-                          source_volume_id, instance.uuid)
-                self.compute_api.detach_volume(context, instance, volume)
-            if self._check_available_status(context, source_volume_id):
-                self.volume_api.snapshot_rollback(context,
-                                                  disk_snapshot_id)
+            source_image_id = disk.get('source_image_id')
+            # rollback vm from volume
+            if source_volume_id and disk_snapshot_id:
+                volume = self.volume_api.get(context, source_volume_id)
+                if volume.get('status') == 'in-use':
+                    LOG.debug('detach volume(%s) from instance(%s)',
+                              source_volume_id, instance.uuid)
+                    self.compute_api.detach_volume(context, instance, volume)
                 if self._check_available_status(context, source_volume_id):
-                    LOG.debug('attach volume(%s) to instance(%s)',
-                              source_volume_id,
-                              instance.uuid)
-                    self.compute_api.attach_volume(context,
-                                                   instance,
-                                                   source_volume_id,
-                                                   device_name)
+                    self.volume_api.snapshot_rollback(context,
+                                                      disk_snapshot_id)
+                    if self._check_available_status(context, source_volume_id):
+                        LOG.debug('attach volume(%s) to instance(%s)',
+                                  source_volume_id,
+                                  instance.uuid)
+                        self.compute_api.attach_volume(context,
+                                                       instance,
+                                                       source_volume_id,
+                                                       device_name)
+            # rollback vm from image
+            if source_image_id and disk_snapshot_id:
+                self.compute_api.image_rollback(context, instance,
+                                                disk_snapshot_id)
 
-        instance.task_state = None
         instance.save()
-
         if is_rollback_memory:
             self.rollback_to_memory_snapshot(context, instance, image_meta)
 
