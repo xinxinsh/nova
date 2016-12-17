@@ -546,11 +546,12 @@ class OpenStackMetadataTestCase(test.TestCase):
         # there is as expected, and that /content lists them.
         for (path, content) in content:
             fent = [f for f in mddict['files'] if f['path'] == path]
-            self.assertEqual(1, len(fent))
+            # chinac add chinac content
+            # self.assertEqual(1, len(fent))
+            self.assertEqual(2, len(fent))
             fent = fent[0]
-            # chinac change default path
-            # found = mdinst.lookup("/openstack%s" % fent['content_path'])
-            # self.assertEqual(found, content)
+            found = mdinst.lookup("/openstack%s" % fent['content_path'])
+            self.assertEqual(found, content)
 
     def test_x509_keypair(self):
         # check if the x509 content is set, if the keypair type is x509.

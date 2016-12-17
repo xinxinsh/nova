@@ -150,6 +150,8 @@ class InstanceMetadata(object):
         self.uuid = instance.uuid
 
         self.content = {}
+        # chinac add this content
+        self.chinac_content = {}
         self.files = []
 
         # get network info, and the rendered network template
@@ -174,19 +176,25 @@ class InstanceMetadata(object):
             self.network_config = {"name": "network_config",
                 'content_path': "/%s/%s" % (CONTENT_DIR, key)}
 
+        # chinac change inject file default path to path in configdriver
+        chinac_content = content
+
         # 'content' is passed in from the configdrive code in
         # nova/virt/libvirt/driver.py.  That's how we get the injected files
         # (personalities) in. AFAIK they're not stored in the db at all,
         # so are not available later (web service metadata time).
         for (path, contents) in content:
-            # key = "%04i" % len(self.content)
-            # self.files.append({'path': path,
-            #     'content_path': "/%s/%s" % (CONTENT_DIR, key)})
-            # chinac change inject file default path to path in configdriver
+            key = "%04i" % len(self.content)
+            self.files.append({'path': path,
+                'content_path': "/%s/%s" % (CONTENT_DIR, key)})
+            self.content[key] = contents
+
+        # chinac change inject file default path to path in configdrive
+        for (path, chinac_contents) in chinac_content:
             key = path
             self.files.append({'path': path,
                 'content_path': key})
-            self.content[key] = contents
+            self.chinac_content[key] = chinac_contents
 
         if vd_driver is None:
             vdclass = importutils.import_class(CONF.vendordata_driver)
@@ -488,9 +496,11 @@ class InstanceMetadata(object):
                 yield (path, self.lookup(path))
 
         for (cid, content) in six.iteritems(self.content):
-            # yield ('%s/%s/%s' % ("openstack", CONTENT_DIR, cid), content)
-            # chinac change content default patch to api set path
-            yield ('%s' % cid.lstrip('/'), content)
+            yield ('%s/%s/%s' % ("openstack", CONTENT_DIR, cid), content)
+
+        # chinac change content default patch to api set path
+        for (cid, chinac_content) in six.iteritems(self.chinac_content):
+            yield ('%s' % cid.lstrip('/'), chinac_content)
 
 
 class RouteConfiguration(object):
