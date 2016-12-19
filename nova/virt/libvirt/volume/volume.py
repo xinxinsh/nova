@@ -60,6 +60,8 @@ class LibvirtBaseVolumeDriver(object):
         conf.source_device = disk_info['type']
         conf.driver_format = "raw"
         conf.driver_cache = "none"
+        conf.driver_cdp = connection_info.get("cdp")
+        conf.driver_cdpHeader = connection_info.get("cdpHeader")
         conf.target_dev = disk_info['dev']
         conf.target_bus = disk_info['bus']
         conf.serial = connection_info.get('serial')

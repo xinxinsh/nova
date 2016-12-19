@@ -466,6 +466,11 @@ class API(object):
             connection_info = cinderclient(
                 context).volumes.initialize_connection(volume_id, connector)
             connection_info['connector'] = connector
+            volume_meta = cinderclient(context).volumes.get(volume_id).metadata
+            if 'cdp' in volume_meta:
+                connection_info['cdp'] = volume_meta['cdp']
+                if 'cdpHeader' in volume_meta:
+                    connection_info['cdpHeader'] = volume_meta['cdpHeader']
             return connection_info
         except cinder_exception.ClientException as ex:
             with excutils.save_and_reraise_exception():
