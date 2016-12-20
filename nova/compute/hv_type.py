@@ -48,6 +48,7 @@ VBOX = "vbox"
 VMWARE = "vmware"
 XEN = "xen"
 ZVM = "zvm"
+POWERVM = "powervm"
 
 ALL = (
     BAREMETAL,
@@ -71,6 +72,7 @@ ALL = (
     VMWARE,
     XEN,
     ZVM,
+    POWERVM,
 )
 
 

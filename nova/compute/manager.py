@@ -105,7 +105,6 @@ from nova.virt import virtapi
 from nova import volume
 from nova.volume import encryptors
 
-
 compute_opts = [
     cfg.StrOpt('console_host',
                default=socket.gethostname(),
@@ -1356,6 +1355,7 @@ class ComputeManager(manager.Manager):
         our available resources (and indirectly our available nodes).
         """
         self.update_available_resource(nova.context.get_admin_context())
+        self.get_exited_instances(nova.context.get_admin_context())
 
     def _get_power_state(self, context, instance):
         """Retrieve the power state for the given instance."""
@@ -6823,6 +6823,70 @@ class ComputeManager(manager.Manager):
                     LOG.warning(_LW("Periodic reclaim failed to delete "
                                     "instance: %s"),
                                 e, instance=instance)
+
+    def update_exited_instances_db(self, context, inst):
+        """Create a instance."""
+        quotas = objects.Quotas(context=context)
+        mem = int(inst['memory_mb'])
+        vcpus = int(inst['vcpus'])
+        project_id = inst['project_id']
+        user_id = inst['user_id']
+        quotas.reserve(instances=+1,
+                       cores=+vcpus, ram=+mem,
+                       project_id=project_id, user_id=user_id)
+        try:
+            self.db.instance_create(context, inst)
+        except Exception:
+            quotas.rollback()
+        quotas.commit()
+
+    def get_flavor_by_name(self, context, flavor_name):
+        try:
+            flavor = objects.Flavor.get_by_name(context,
+                                                flavor_name)
+        except Exception:
+            flavor = None
+        return flavor
+
+    def create_flavor_for_instance(self, context, inst_name,
+                                   flavor_name, node=None):
+        flavor = self.get_flavor_by_name(context, flavor_name)
+        if not flavor:
+            flavor_info = self.driver.get_instance_flavor_info(inst_name,
+                                                               flavor_name,
+                                                               node=node)
+            if flavor_info:
+                flavor = objects.Flavor(context=context, **flavor_info)
+                flavor.create()
+        return flavor
+
+    def get_exited_instances(self, context):
+        nodenames = self.driver.get_available_nodes()
+        db_instances = objects.InstanceList.get_by_host(context,
+                                                    self.host,
+                                                    expected_attrs=[],
+                                                    use_slave=True)
+        db_inst_display_name = map(lambda x: x.display_name,
+                                   db_instances)
+        db_inst_name = map(lambda x: x.name, db_instances)
+        for nodename in nodenames:
+            try:
+                nodetype = self.driver.get_hypervisor_type(nodename)
+            except Exception:
+                nodetype = None
+            if nodetype == 'powervm':
+                driver_instances = self.driver.list_instances_one_node(
+                                                                nodename)
+                for s in driver_instances:
+                    if s not in db_inst_name and s not in db_inst_display_name:
+                        flavor_name = nodename + '-powervm-' + s
+                        flavor = self.create_flavor_for_instance(context, s,
+                                                                 flavor_name,
+                                                                 node=nodename)
+                        inst = self.driver.get_instance_info(s, self.host,
+                                                             nodename, flavor)
+                        if inst:
+                            self.update_exited_instances_db(context, inst)
 
     @periodic_task.periodic_task(spacing=CONF.update_resources_interval)
     def update_available_resource(self, context):
