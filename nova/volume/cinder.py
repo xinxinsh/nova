@@ -543,8 +543,8 @@ class API(object):
     @translate_cinder_exception
     def clone(self, context, size, name, source_volid):
         client = cinderclient(context)
-        kwargs = dict(volume_type='rbd',
-                      user_id=context.user_id,
+        # kwargs = dict(volume_type='rbd',
+        kwargs = dict(user_id=context.user_id,
                       project_id=context.project_id,
                       source_volid=source_volid)
 
