@@ -4025,6 +4025,17 @@ class LibvirtDriver(driver.ComputeDriver):
         image = self.image_backend.image(instance,
                                          name,
                                          image_type)
+        # fix nova.conf change default_image_type
+        # default to rbd lead vm reboot_hard error
+        if (name == 'disk.config' and image_type == 'rbd' and
+                not image.check_image_exists()):
+            # This is likely an older config drive that has not been migrated
+            # to rbd yet. Try to fall back on 'raw' image type.
+            # TODO(melwitt): Add online migration of some sort so we can
+            # remove this fall back once we know all config drives are in rbd.
+            image = self.image_backend.image(instance, name, 'raw')
+            LOG.debug('Config drive not found in RBD, falling back to the '
+                      'instance directory', instance=instance)
         disk_info = disk_mapping[name]
         return image.libvirt_info(disk_info['bus'],
                                   disk_info['dev'],
