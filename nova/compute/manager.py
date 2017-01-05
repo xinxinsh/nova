@@ -5604,12 +5604,32 @@ class ComputeManager(manager.Manager):
             if (is_shared_block_storage or
                 is_shared_instance_path or
                 CONF.config_drive_format == 'vfat'):
+                # check config driver if need detach
+                block_device_info = \
+                    self._get_instance_block_device_info(context,
+                                                         instance)
+                check_config = \
+                    self.driver.check_config_driver(context, instance,
+                               block_device_info=block_device_info)
+                if check_config:
+                    # This is likely an older config drive that cannot
+                    # migrate to rbd yet. Try to detach disk_config.
+                    instance.config_drive = ''
+                    instance.save()
+                    self.driver.ensure_detach_disk_config(instance)
+                    migrate_data.block_migration = False
+                    LOG.info(_LI('config is rbd but config drive '
+                                 'is local so detach'),
+                                  instance=instance)
                 pass
             else:
                 instance.config_drive = ''
                 instance.save()
                 self.driver.ensure_detach_disk_config(instance)
                 migrate_data.block_migration = False
+                LOG.info(_LI('config is default and config drive '
+                         'is local so detach'),
+                         instance=instance)
 
         try:
             if ('block_migration' in migrate_data and

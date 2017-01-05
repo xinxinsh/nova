@@ -3383,6 +3383,30 @@ class LibvirtDriver(driver.ComputeDriver):
             return ctype.ConsoleSerial(host=hostname, port=port)
         raise exception.ConsoleTypeUnavailable(console_type='serial')
 
+    # chinac add this method
+    def check_config_driver(self, context, instance,
+                            block_device_info=None):
+        # check config driver is local raw disk config
+        check_config = False
+        disk_info = blockinfo.get_disk_info(CONF.libvirt.virt_type,
+                                            instance,
+                                            instance.image_meta,
+                                            block_device_info)
+        disk_mapping = disk_info['mapping']
+        image_type = self._get_disk_config_image_type()
+        if 'disk.config' in disk_mapping:
+            image = self.image_backend.image(instance,
+                                         'disk.config',
+                                         image_type)
+            if (image_type == 'rbd' and
+                    not image.check_image_exists()):
+                # This is likely an older config drive that cannot
+                # migrate to rbd yet. Try to detach disk_config.
+                LOG.debug('Config drive not found in RBD, this may old '
+                      'config lead, so detach it', instance=instance)
+                check_config = True
+        return check_config
+
     @staticmethod
     def _supports_direct_io(dirpath):
 

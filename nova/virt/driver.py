@@ -405,6 +405,21 @@ class ComputeDriver(object):
         """
         raise NotImplementedError()
 
+    def check_config_driver(self, context, instance,
+                            block_device_info):
+        """Check config driver is local for live_migration
+           when older config default change to rbd.
+           chinac add this method
+
+        :param context: security context
+        :param instance: nova.objects.instance.Instance
+        :param dict block_device_info:
+            Information about the block devices.
+
+        :returns True or False
+        """
+        raise NotImplementedError()
+
     def get_mks_console(self, context, instance):
         """Get connection info for a MKS console.
 
