@@ -311,6 +311,58 @@ class UsbMappingController(wsgi.Controller):
         if msg_err != '':
             raise exc.HTTPNotFound(explanation=msg_err)
 
+    def _get_usb(self, context, src_host_name, usb_vid, usb_pid):
+        hosts = self._get_hosts(context)
+        if src_host_name not in hosts:
+            msg = _("host:%s is not found or is down") % src_host_name
+            raise exc.HTTPNotFound(explanation=msg)
+
+        # check the USB status in real time
+        try:
+            usb_list = self.compute_api.get_usb_host_list(context,
+                                                          src_host_name)
+        except exception.NotFound as e:
+            raise exc.HTTPNotFound(explanation=e.format_message())
+
+        for usb_info in usb_list:
+            if usb_info['usb_vid'] == usb_vid and usb_info['usb_pid'] == \
+                    usb_pid:
+                return usb_info
+        return None
+
+    def _usb_auto_mapping(self, req, context, instance, usb_mounted):
+        src_host_name = usb_mounted.get("src_host_name")
+        dis_host_name = instance.host
+        usb_vid = usb_mounted.get("usb_vid")
+        usb_pid = usb_mounted.get("usb_pid")
+        if instance.host != src_host_name:
+            usb = self._get_usb(context, src_host_name, usb_vid, usb_pid)
+            if usb and 'shared' not in usb.get('usb_host_status'):
+                set_shared_dict = {
+                    "usb_shared":
+                        {
+                            "host_name": src_host_name,
+                            "usb_vid": usb_vid,
+                            "usb_pid": usb_pid,
+                            "usb_port": usb.get('usb_port'),
+                            "shared": "True"
+                        }
+                }
+                self.usb_shared(req, set_shared_dict)
+            if usb and dis_host_name not in usb.get('usb_host_status'):
+                set_map_dict = {
+                    "usb_mapped":
+                        {
+                            "src_host_name": src_host_name,
+                            "dst_host_name": dis_host_name,
+                            "usb_vid": usb_vid,
+                            "usb_pid": usb_pid,
+                            "usb_port": usb.get('usb_port'),
+                            "mapped": "True"
+                        }
+                }
+                self.usb_mapped(req, set_map_dict)
+
     def usb_mounted(self, req, body):
         """Mount the usb device to the local instance"""
 
@@ -363,6 +415,11 @@ class UsbMappingController(wsgi.Controller):
 
         self._check_usb_dynamically(context, src_host_name,
                                     dst_host_name, usb_vid, usb_pid)
+
+        # set usb auto mapping if vm not in src_host
+        auto_mapping = usb_mounted.get("auto_mapping", False)
+        if auto_mapping:
+                self._auto_mapping(req, context, instance, usb_mounted)
 
         self.compute_api.usb_mounted(context,
                                      instance,
