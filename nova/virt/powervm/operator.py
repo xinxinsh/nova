@@ -1627,7 +1627,9 @@ class PowerHMCOperator(PowerVMOperator):
                   timeout=constants.POWERVM_LPAR_OPERATION_TIMEOUT):
         managed_system = instance['node']
         instance_name = instance['display_name']
-        self._operator.stop_lpar(instance_name, managed_system, timeout)
+        lpar = self._operator.get_lpar(instance_name, managed_system)
+        if lpar['state'] != constants.POWERVM_SHUTDOWN:
+            self._operator.stop_lpar(instance_name, managed_system, timeout)
 
     def power_on(self, instance):
         managed_system = instance['node']
@@ -1960,10 +1962,20 @@ class HMCBaseOperator(BaseOperator):
         avail_slot = None
         min_virt_slot = self._get_min_virt_slot(managed_system)
         max_virt_slot = self._get_max_virt_slot(managed_system, vios_lpar_id)
-        for slot in range(min_virt_slot, max_virt_slot + 1):
+        # for slot in range(min_virt_slot, max_virt_slot + 1):
+        begin = time.time()
+        time_passed = 0
+        time_out = 120
+        while time_passed < time_out:
+            now = time.time()
+            time_passed = now - begin
+            slot = random.randint(min_virt_slot, max_virt_slot + 1)
             if slot not in slots_in_use:
                 avail_slot = slot
                 break
+            else:
+                time.sleep(3)
+                continue
         return avail_slot
 
     def list_vios_virt_slots(self, managed_system, vios_lpar_id):
