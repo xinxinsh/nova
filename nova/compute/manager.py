@@ -7527,6 +7527,17 @@ class ComputeManager(manager.Manager):
 
     @wrap_exception()
     @reverts_task_state
+    def create_system_and_memory_snapshot(self, context, instance,
+                                          system_image_id,
+                                          memory_image_meta,
+                                          volume_mapping, vm_active):
+
+        self.snapshot_instance(context, system_image_id, instance)
+        self.create_memory_snapshot(context, instance, memory_image_meta,
+                                    volume_mapping, vm_active)
+
+    @wrap_exception()
+    @reverts_task_state
     def rollback_to_memory_snapshot(self, context, instance, image_meta):
         instance.task_state = task_states.ROLLING_MEMORY_BACK
         instance.save()

@@ -1248,6 +1248,20 @@ class ComputeAPI(object):
                           volume_mapping=volume_mapping,
                           vm_active=vm_active)
 
+    def create_system_and_memory_snapshot(self, ctxt, instance,
+                                          system_image_id,
+                                          memory_image_meta,
+                                          volume_mapping, vm_active=False):
+        version = '4.6'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                                    version=version)
+        return cctxt.cast(ctxt, 'create_system_and_memory_snapshot',
+                          instance=instance,
+                          system_image_id=system_image_id,
+                          memory_image_meta=memory_image_meta,
+                          volume_mapping=volume_mapping,
+                          vm_active=vm_active)
+
     def rollback_to_memory_snapshot(self, ctxt, instance, image_meta):
         version = '4.6'
         cctxt = self.client.prepare(server=_compute_host(None, instance),

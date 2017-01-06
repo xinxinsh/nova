@@ -2532,34 +2532,6 @@ class API(base.Base):
                     'snapshot',
                     extra_properties=None)
 
-                # NOTE(comstud): Any changes to this method should also be made
-                # to the snapshot_instance() method in nova/cells/messaging.py
-                self.compute_rpcapi.snapshot_instance(context, instance,
-                                                      image_meta_system['id'])
-
-                # Wait for system_disk_snapshot to become ready
-                starttime = time.time()
-                deadline = starttime + 100
-
-                image_service = glance.get_default_image_service()
-                new_image_system = image_service.show(context,
-                                                      image_meta_system['id'])
-                tries = 0
-                while new_image_system['status'] != 'active':
-                    tries = tries + 1
-                    now = time.time()
-                    if new_image_system['status'] == 'error':
-                        msg = _("failed to create system_disk_snapshot")
-                        raise exception.NovaException(reason=msg)
-                    elif now > deadline:
-                        msg = _("timeout create system_disk_snapshot")
-                        raise exception.NovaException(reason=msg)
-                    else:
-                        time.sleep(tries ** 2)
-                    new_image_system = image_service.show(
-                        context,
-                        image_meta_system['id'])
-
                 image_meta['properties']['system_snapshot_id'] = \
                     image_meta_system['id']
 
@@ -2587,9 +2559,7 @@ class API(base.Base):
                     deadline = starttime + 100
                     new_snapshot = self.volume_api.get_snapshot(context,
                                                                 snapshot['id'])
-                    tries = 0
                     while new_snapshot['status'] != 'available':
-                        tries = tries + 1
                         now = time.time()
                         if new_snapshot['status'] == 'error':
                             msg = _("failed to create new_snapshot")
@@ -2598,7 +2568,7 @@ class API(base.Base):
                             msg = _("timeout creating new_snapshot")
                             raise exception.NovaException(reason=msg)
                         else:
-                            time.sleep(tries ** 2)
+                            time.sleep(2)
                         new_snapshot = self.volume_api.get_snapshot(
                             context,
                             new_snapshot['id'])
@@ -2627,21 +2597,40 @@ class API(base.Base):
                     'snapshot',
                     extra_properties=None)
 
-                self.compute_rpcapi.create_memory_snapshot(
-                    context,
-                    instance,
-                    memory_image_meta,
-                    mapping,
-                    vm_active)
+                if image_system and properties['system_snapshot'] == "True":
+                    self.compute_rpcapi.create_system_and_memory_snapshot(
+                        context,
+                        instance,
+                        image_meta_system['id'],
+                        memory_image_meta,
+                        mapping,
+                        vm_active)
+                else:
+                    self.compute_rpcapi.create_memory_snapshot(
+                        context,
+                        instance,
+                        memory_image_meta,
+                        mapping,
+                        vm_active)
 
                 image_meta['properties']['memory_snapshot_id'] = \
                     memory_image_meta['id']
+            else:
+                if image_system and properties['system_snapshot'] == "True":
+                    self.compute_rpcapi.snapshot_instance(
+                        context,
+                        instance,
+                        image_meta_system['id'])
             image_meta['properties']['snapshot_type'] = 'snapshot_for_online'
         else:
+            if image_system and properties['system_snapshot'] == "True":
+                self.compute_rpcapi.snapshot_instance(context, instance,
+                                                      image_meta_system['id'])
             image_meta['properties']['snapshot_type'] = 'snapshot_for_offline'
 
-        instance.task_state = None
-        instance.save()
+        if not image_system:
+            instance.task_state = None
+            instance.save()
 
         # from image get os_distro and os_version
         for bdm in bdms:
@@ -4237,7 +4226,8 @@ class API(base.Base):
                                 image_system = image_service.show(
                                     context,
                                     image_system_id)
-                                if image_system['status'] == 'active':
+                                if image_system['status'] in ['active',
+                                                              'queued']:
                                     image_service.delete(
                                         context,
                                         image_system_id)
