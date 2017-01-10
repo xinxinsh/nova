@@ -186,7 +186,8 @@ class Instance(base.NovaPersistentObject, base.NovaObject,
         'vcpu_model': fields.ObjectField('VirtCPUModel', nullable=True),
         'ec2_ids': fields.ObjectField('EC2Ids'),
         'migration_context': fields.ObjectField('MigrationContext',
-                                                nullable=True)
+                                                nullable=True),
+        'iso': fields.StringField(nullable=True)
         }
 
     obj_extra_fields = ['name']

@@ -3549,6 +3549,13 @@ class API(base.Base):
     @wrap_check_policy
     @check_instance_lock
     @check_instance_cell
+    def change_iso(self, context, instance, iso):
+        """Change ISO on the instance."""
+        self.compute_rpcapi.change_iso(context, instance=instance, iso=iso)
+
+    @wrap_check_policy
+    @check_instance_lock
+    @check_instance_cell
     def inject_network_info(self, context, instance):
         """Inject network info for the instance."""
         self.compute_rpcapi.inject_network_info(context, instance=instance)

@@ -4250,6 +4250,12 @@ class ComputeManager(manager.Manager):
     def change_cdrom(self, context, instance, iso_name):
         return self.driver.change_cdrom(instance, iso_name)
 
+    @object_compat
+    @wrap_exception()
+    @wrap_instance_fault
+    def change_iso(self, context, instance, iso):
+        return self.driver.change_iso(context, instance, iso)
+
     @wrap_exception()
     @reverts_task_state
     @wrap_instance_event

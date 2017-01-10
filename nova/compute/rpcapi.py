@@ -451,6 +451,13 @@ class ComputeAPI(object):
         return cctxt.call(ctxt, 'change_cdrom', instance=instance,
                           iso_name=iso_name)
 
+    def change_iso(self, ctxt, instance, iso):
+        version = '4.0'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                version=version)
+        return cctxt.call(ctxt, 'change_iso', instance=instance,
+                          iso=iso)
+
     def attach_mem(self, ctxt, instance, target_size, target_node,
                    source_pagesize, source_nodemask):
         version = '4.0'

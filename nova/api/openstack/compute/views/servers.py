@@ -281,6 +281,7 @@ class ViewBuilderV21(ViewBuilder):
                 "status": self._get_vm_status(instance),
                 "tenant_id": instance.get("project_id") or "",
                 "user_id": instance.get("user_id") or "",
+                "iso": instance.get("iso") or "",
                 "metadata": self._get_metadata(instance),
                 "hostId": self._get_host_id(instance) or "",
                 # TODO(alex_xu): '_get_image' return {} when there image_ref

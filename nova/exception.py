@@ -2168,6 +2168,11 @@ class MountCdromFailed(NovaException):
                 " error: %(error)s")
 
 
+class ChangeISOFailed(NovaException):
+    msg_fmt = _("Unable to change/remove ISO of instance %(instance)s,"
+                " error: %(error)s")
+
+
 class BandwidthExists(NovaException):
     msg_fmt = _(
         "Bandwidth associated with port_id %(port_id)s already exists.")

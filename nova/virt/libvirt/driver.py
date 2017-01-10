@@ -314,7 +314,10 @@ libvirt_opts = [
                default=1,
                help='In a realtime host context vCPUs for guest will run in '
                'that scheduling priority. Priority depends on the host '
-               'kernel (usually 1-99)')
+               'kernel (usually 1-99)'),
+    cfg.StrOpt('iso_dir',
+               default='/var/lib/nova/iso',
+               help='Directory to mount iso when images_type is not rbd.')
     ]
 
 CONF = nova.conf.CONF
@@ -951,6 +954,34 @@ class LibvirtDriver(driver.ComputeDriver):
 
     def change_cdrom(self, instance, iso_name):
         self._core.change_cdrom(instance, iso_name)
+
+    def change_iso(self, context, instance, iso):
+        try:
+            dom = self._core._lookup_by_name(instance['name'])
+        except IOError as e:
+            raise exception.ChangeISOFailed(instance, error=e.strerror)
+        except exception.InstanceNotFound:
+            # pass if instance is power off
+            return
+
+        conf = self._get_guest_cdrom_config(context, instance, iso)
+
+        try:
+            flags = libvirt.VIR_DOMAIN_AFFECT_CONFIG
+            state = LIBVIRT_POWER_STATE[dom.info()[0]]
+            if state == power_state.RUNNING:
+                flags |= libvirt.VIR_DOMAIN_AFFECT_LIVE
+            dom.updateDeviceFlags(conf.to_xml(), flags)
+            instance.refresh()
+            instance.iso = iso
+            instance.save()
+        except libvirt.libvirtError as ex:
+            error_code = ex.get_error_code()
+            if error_code == libvirt.VIR_ERR_NO_DOMAIN:
+                LOG.warn(_LW("During changing cdrom, instance disappeared."),
+                         instance=instance)
+            else:
+                raise exception.ChangeISOFailed(instance, error=ex.strerror)
 
     def plug_vifs(self, instance, network_info):
         """Plug VIFs into networks."""
@@ -5063,6 +5094,47 @@ class LibvirtDriver(driver.ComputeDriver):
                 cpu_config.features.add(xf)
         return cpu_config
 
+    def _get_guest_cdrom_config(self, context, instance, iso=None):
+        conf = vconfig.LibvirtConfigGuestDisk()
+        conf.source_device = 'cdrom'
+        conf.driver_name = 'qemu'
+        conf.driver_format = 'raw'
+        conf.target_dev = 'hdc'
+        conf.target_bus = 'ide'
+        conf.readonly = True
+
+        if CONF.libvirt.images_type == 'rbd':
+            conf.source_type = 'network'
+            if iso:
+                conf.source_protocol = 'rbd'
+                image_meta = self._image_api.get(context, iso,
+                                                 include_locations=True)
+                locations = image_meta['locations']
+                if image_meta.get('disk_format') != 'iso':
+                    reason = _('Image is not iso format')
+                    raise exception.ImageUnacceptable(image_id=iso,
+                                                      reason=reason)
+                for location in locations:
+                    parent_fsid, parent_pool, _im, _snap = \
+                        self._get_rbd_driver().parse_url(location['url'])
+                    conf.source_name = '%s/%s' % (parent_pool, _im)
+                    break
+
+                hosts, ports = LibvirtDriver._get_rbd_driver().get_mon_addrs()
+                conf.source_hosts = hosts
+                conf.source_ports = ports
+                if CONF.libvirt.rbd_secret_uuid and CONF.libvirt.rbd_user:
+                    conf.auth_secret_type = 'ceph'
+                    conf.auth_secret_uuid = CONF.libvirt.rbd_secret_uuid
+                    conf.auth_username = CONF.libvirt.rbd_user
+        else:
+            conf.source_type = 'file'
+            if iso:
+                conf.source_path = os.path.join(CONF.libvirt.iso_dir, iso)
+            else:
+                conf.source_path = ''
+        return conf
+
     def _get_guest_config(self, instance, network_info, image_meta,
                           disk_info, rescue=None, block_device_info=None,
                           context=None):
@@ -5157,7 +5229,8 @@ class LibvirtDriver(driver.ComputeDriver):
         for config in storage_configs:
             guest.add_device(config)
 
-        cdrom = self._get_guest_cdrom_device(instance, None, True)
+        #cdrom = self._get_guest_cdrom_device(instance, None, True)
+        cdrom = self._get_guest_cdrom_config(context, instance, instance.iso)
         guest.add_device(cdrom)
 
         # (now) when hotplug mem will update flavor
