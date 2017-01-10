@@ -64,6 +64,7 @@ from nova.virt.libvirt import config as vconfig
 from nova.virt.libvirt import host
 from nova.virt.libvirt import imagebackend
 from nova.virt.libvirt import imagecache
+from nova.virt.libvirt.storage import rbd_utils
 from nova.virt.libvirt import utils as libvirt_utils
 from nova.virt.libvirt import vif as libvirt_vif
 from nova import volume
@@ -1129,6 +1130,13 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
             image.cache(fetch_func=copy_from_host,
                         filename=filename)
 
+    @staticmethod
+    def _get_rbd_driver():
+        return rbd_utils.RBDDriver(
+                pool=CONF.libvirt.images_rbd_pool,
+                ceph_conf=CONF.libvirt.images_rbd_ceph_conf,
+                rbd_user=CONF.libvirt.rbd_user)
+
     def image_rollback(self, context, instance, image_meta):
         LOG.info(_LI('Image_rollback from the given image:%(image)s '
                      'and replace the old.'),
@@ -1141,20 +1149,27 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
         suffix = ''
         image_type = CONF.libvirt.images_type
 
+        if image_type == 'default':
+            disk_path = libvirt_utils.get_instance_path(instance)
+            disk_file_bak = os.path.join(disk_path, 'disk_bak')
+            disk_file = os.path.join(disk_path, 'disk')
+
         disk_images = {'image_id': image_meta['id'],
                        'kernel_id': instance.kernel_id,
                        'ramdisk_id': instance.ramdisk_id}
 
-        disk_path = libvirt_utils.get_instance_path(instance)
-        disk_file_bak = os.path.join(disk_path, 'disk_bak')
-        disk_file = os.path.join(disk_path, 'disk')
-
         try:
-            # backup old disk file
-            if os.path.exists(disk_file_bak):
-                libvirt_utils.file_delete(disk_file_bak)
-            if os.path.exists(disk_file):
-                libvirt_utils.file_rename(disk_file, disk_file_bak)
+            if image_type == 'default':
+                # backup old disk file
+                if os.path.exists(disk_file_bak):
+                    libvirt_utils.file_delete(disk_file_bak)
+                if os.path.exists(disk_file):
+                    libvirt_utils.file_rename(disk_file, disk_file_bak)
+            else:
+                rbd_utils = self._get_rbd_driver()
+                instance_disk = instance.uuid + "_disk"
+                if rbd_utils.exists(instance_disk):
+                    rbd_utils.remove_image(instance_disk)
 
             # NOTE(ndipanov): Even if disk_mapping was passed in, which
             # currently happens only on rescue - we still don't want to
@@ -1178,12 +1193,14 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
                                         instance, size,
                                         fallback_from_host=None)
 
-            libvirt_utils.chown(disk_file, 'qemu:qemu')
+            if image_type == 'default':
+                libvirt_utils.chown(disk_file, 'qemu:qemu')
         except Exception:
             instance.task_state = None
             instance.save()
-            if os.path.exists(disk_file_bak):
-                libvirt_utils.file_rename(disk_file_bak, disk_file)
+            if image_type == 'default':
+                if os.path.exists(disk_file_bak):
+                    libvirt_utils.file_rename(disk_file_bak, disk_file)
             msg = _('Instance:%s image_rollback error') % instance.uuid
             raise exception.NovaException(msg)
 

@@ -4146,6 +4146,59 @@ class API(base.Base):
 
         return snapshot_info
 
+    def check_snapshot_is_inuse(self, context, image_id, image_meta):
+
+        if 'system_snapshot_id' in image_meta['properties']:
+            image_system_id = \
+                image_meta['properties']['system_snapshot_id']
+            instance_list = self.get_all(
+                context,
+                search_opts={'image': image_system_id,
+                             'deleted': False})
+            if len(instance_list) != 0:
+                return True
+
+        if image_meta['properties']['is_volume'] == 'True' \
+                and 'block_device_mapping' in image_meta['properties']:
+            for block in image_meta['properties']['block_device_mapping']:
+                if block['device_name'] == '/dev/vda':
+                    try:
+                        volume_snapshot = self.volume_api.get_snapshot(
+                            context,
+                            block['snapshot_id'])
+                        if volume_snapshot['status'] == 'available':
+                            self.volume_api.delete_snapshot(
+                                context,
+                                block['snapshot_id'])
+                    except Exception:
+                        break
+
+                    # delete_snapshot is rpc cast
+                    # Wait for delete_snapshot sucessfully
+                    volume_snapshot = ''
+                    starttime = time.time()
+                    deadline = starttime + 10
+                    try:
+                        volume_snapshot = self.volume_api.get_snapshot(
+                            context,
+                            block['snapshot_id'])
+
+                        while volume_snapshot != '':
+                            now = time.time()
+                            if now > deadline:
+                                if volume_snapshot['status'] == \
+                                        'available':
+                                    return True
+                            else:
+                                time.sleep(2)
+                            volume_snapshot = ''
+                            volume_snapshot = self.volume_api.get_snapshot(
+                                context,
+                                block['snapshot_id'])
+                    except Exception:
+                        break
+        return False
+
     def delete_vm_snapshot(self, context, image_id):
 
         image_service = glance.get_default_image_service()
@@ -4157,6 +4210,11 @@ class API(base.Base):
 
             delete_error = False
             msg = ''
+
+            if self.check_snapshot_is_inuse(context, image_id,
+                                            image_meta):
+                msg = (_('the snapshot of id:%s is in-use') % image_id)
+                return msg
 
             if 'memory_snapshot_id' in image_meta['properties']:
                 try:
