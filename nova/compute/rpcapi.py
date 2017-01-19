@@ -889,6 +889,20 @@ class ComputeAPI(object):
                 version=version)
         cctxt.cast(ctxt, 'resize_instance', **msg_args)
 
+    def resize_local_instance(self, ctxt, instance, extra_instance_updates,
+                              flavor, reservations=None,
+                              clean_shutdown=True):
+        msg_args = {'instance': instance,
+                    'instance_type': flavor,
+                    'reservations': reservations,
+                    'clean_shutdown': clean_shutdown,
+        }
+        version = '4.1'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                version=version)
+        # cctxt.cast(ctxt, 'resize_local_instance', **msg_args)
+        cctxt.call(ctxt, 'resize_local_instance', **msg_args)
+
     def resume_instance(self, ctxt, instance):
         version = '4.0'
         cctxt = self.client.prepare(server=_compute_host(None, instance),

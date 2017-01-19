@@ -359,6 +359,19 @@ class ResourceTracker(object):
         self._update(context.elevated())
 
     @utils.synchronized(COMPUTE_RESOURCE_SEMAPHORE)
+    def abort_instance_claim_resize(self, context, instance):
+        """Remove usage from the given instance.
+
+        Chinac add this for just remove instance tmp.
+        for local resize.
+        """
+
+        self._update_usage_from_instance(context, instance, is_removed=True)
+
+        instance.clear_numa_topology()
+        self._update(context.elevated())
+
+    @utils.synchronized(COMPUTE_RESOURCE_SEMAPHORE)
     def drop_move_claim(self, context, instance, instance_type=None,
                         prefix='new_'):
         """Remove usage for an incoming/outgoing migration."""

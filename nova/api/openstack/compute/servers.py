@@ -1093,6 +1093,35 @@ class ServersController(wsgi.Controller):
         return common.get_id_from_href(flavor_ref)
 
     @wsgi.response(202)
+    @extensions.expected_errors((404, 409))
+    @wsgi.action('resize_local')
+    def _action_resize_local(self, req, id, body):
+        """Begin the resize local process witch given instance/flavor"""
+        instance_id = id
+        resize_dict = body['resize_local']
+        flavor_id = str(resize_dict["flavorRef"])
+        resize_kwargs = {}
+
+        context = req.environ['nova.context']
+        # chinac-only start
+        context.instance_uuid = instance_id
+        # chinac-only end
+        authorize(context, action='resize_local')
+        instance = self._get_server(context, req, instance_id)
+
+        try:
+            # chinac exec resize vm on host
+            self.compute_api.resize_local(context, instance,
+                                     flavor_id, **resize_kwargs)
+        except (exception.InstanceNotReady, exception.InstanceIsLocked) as e:
+            raise webob.exc.HTTPConflict(explanation=e.format_message())
+        except exception.InstanceUnknownCell as e:
+            raise exc.HTTPConflict(explanation=e.format_message())
+        except exception.InstanceInvalidState as state_error:
+            common.raise_http_conflict_for_instance_invalid_state(state_error,
+                    'resize_local', instance_id)
+
+    @wsgi.response(202)
     @extensions.expected_errors((400, 401, 403, 404, 409))
     @wsgi.action('resize')
     @validation.schema(schema_server_resize)

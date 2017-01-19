@@ -5333,6 +5333,95 @@ class ComputeManager(manager.Manager):
     @wrap_exception()
     @reverts_task_state
     @wrap_instance_fault
+    def resize_local_instance(self, context, instance,
+                              instance_type, reservations,
+                              clean_shutdown):
+        """resize a local instance."""
+        # prep resize
+        if not instance.host:
+            msg = _('Instance has no source host')
+            raise exception.ResizeError(reason=msg)
+        # check if cpu & mem is avaiable
+        old_instance_type = instance.get_flavor()
+        need_c = instance_type.vcpus - old_instance_type.vcpus
+        need_m = instance_type.memory_mb - old_instance_type.memory_mb
+        res = self.driver.get_available_resource(instance.host)
+        h_a_cpu = res["vcpus"] - res["vcpus_used"]
+        h_a_mem = res["memory_mb"] - res["memory_mb_used"]
+        if need_c > h_a_cpu or need_m > h_a_mem:
+            msg = _('cpu or mem is not enough')
+            raise exception.ResizeError(reason=msg)
+
+        quotas = objects.Quotas.from_reservations(context,
+                                                  reservations,
+                                                  instance=instance)
+        old_vm_state = instance.vm_state
+        LOG.debug('Stashing vm_state: %s', old_vm_state, instance=instance)
+
+        network_info = self.network_api.get_instance_nw_info(context,
+                                                                 instance)
+        self._notify_about_instance_usage(
+                context, instance, "resize.start", network_info=network_info)
+        instance.new_flavor = instance_type
+        instance.old_flavor = old_instance_type
+        try:
+            vm_state = instance.vm_state
+            # release cpu and mem
+            rt = self._get_resource_tracker(instance.host)
+            rt.abort_instance_claim_resize(context, instance)
+
+            # begin resize claim
+            rt = self._get_resource_tracker(instance.host)
+            with rt.resize_claim(context, instance, instance_type,
+                             image_meta=None, limits=None) as claim:
+                migration = claim.migration
+            # power off vm
+            self._power_off_instance(context, instance, clean_shutdown)
+            # flavor update
+            self._set_instance_info(instance, instance_type)
+            # numa update
+            instance.apply_migration_context()
+            # save to db
+            instance.save()
+            # delete claim
+            rt = self._get_resource_tracker(instance.host)
+            rt.drop_move_claim(context, instance, old_instance_type)
+            # check if need power on vm
+            if vm_state == vm_states.ACTIVE:
+                self._power_on(context, instance)
+            self._notify_about_instance_usage(
+                context, instance, "resize.confirm.end",
+                network_info=network_info)
+            # recover vm state
+            instance.old_flavor = None
+            instance.new_flavor = None
+            instance.task_state = None
+            instance.save()
+            # update migration state
+            migration.status = 'confirmed'
+            with migration.obj_as_admin():
+                migration.save()
+            quotas.commit()
+        except exception.ComputeResourcesUnavailable as e:
+            LOG.debug("Could not resize instance on this host, not "
+                      "enough resources available.", instance=instance)
+            raise exception.ComputeResourcesUnavailable(
+                                  reason=e.format_message())
+        except Exception:
+            LOG.exception(_LE('Resize local instance fail'),
+                          instance=instance)
+            with excutils.save_and_reraise_exception():
+                try:
+                    quotas.rollback()
+                except Exception:
+                    LOG.exception(_LE("Failed to rollback quota for failed "
+                                      "finish_resize"),
+                                  instance=instance)
+
+    @object_compat
+    @wrap_exception()
+    @reverts_task_state
+    @wrap_instance_fault
     def attach_mem(self, context, instance, target_size,
                    target_node, source_pagesize, source_nodemask):
         """Use hotplug to add a memory device to an instance."""
