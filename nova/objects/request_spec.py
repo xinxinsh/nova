@@ -210,6 +210,22 @@ class RequestSpec(base.NovaObject):
         spec._from_instance(instance)
         flavor = request_spec.get('instance_type')
         spec._from_flavor(flavor)
+        # Chinac change this flow
+        # fix bug resize scheduler use old numa topology
+        # when resize flaovr reset requested_topology
+        # check instance is obj or dict get old flavor id
+        if isinstance(instance, obj_instance.Instance):
+            old_flavorid = instance.get('flavor').get('flavorid')
+        elif isinstance(instance, dict):
+            old_flavorid = instance.get('flavorid')
+        else:
+            # If the instance is None,set old_flavorid value
+            # as flavorid to skip the next numa reset
+            old_flavorid = flavor.get('flavorid')
+        if flavor and flavor.get('flavorid') != old_flavorid:
+            requested_topology = hardware.numa_get_constraints(
+                spec.flavor, spec.image)
+            spec._from_instance_numa_topology(requested_topology)
         # Hydrate now from filter_properties
         spec.ignore_hosts = filter_properties.get('ignore_hosts')
         spec.force_hosts = filter_properties.get('force_hosts')

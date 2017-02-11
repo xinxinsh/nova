@@ -272,10 +272,16 @@ class _TestRequestSpecObject(object):
 
     @mock.patch.object(objects.SchedulerLimits, 'from_dict')
     def test_from_primitives(self, mock_limits):
-        spec_dict = {'instance_type': objects.Flavor(),
+        fake_flavor = objects.Flavor(flavorid='0',
+                                     root_gb=10,
+                                     ephemeral_gb=0,
+                                     memory_mb=512,
+                                     vcpus=1)
+        spec_dict = {'instance_type': fake_flavor,
                      'instance_properties': objects.Instance(
                          uuid=uuidutils.generate_uuid(),
                          numa_topology=None,
+                         flavor=fake_flavor,
                          pci_requests=None,
                          project_id=1,
                          availability_zone='nova')}
