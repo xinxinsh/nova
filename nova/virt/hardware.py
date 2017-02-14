@@ -687,7 +687,15 @@ def _pack_instance_onto_cores(available_siblings,
     will simply rely on the iteration ordering and picking the first viable
     placement.
     """
-
+    LOG.debug('Packing an instance onto a set of siblings: '
+             '    available_siblings: %(siblings)s'
+             '    instance_cell: %(cells)s'
+             '    host_cell_id: %(host_cell_id)s'
+             '    threads_per_core: %(threads_per_core)s',
+                {'siblings': available_siblings,
+                 'cells': instance_cell,
+                 'host_cell_id': host_cell_id,
+                 'threads_per_core': threads_per_core})
     # We build up a data structure that answers the question: 'Given the
     # number of threads I want to pack, give me a list of all the available
     # sibling sets (or groups thereof) that can accommodate it'
@@ -695,7 +703,7 @@ def _pack_instance_onto_cores(available_siblings,
     for sib in available_siblings:
         for threads_no in range(1, len(sib) + 1):
             sibling_sets[threads_no].append(sib)
-
+    LOG.debug('Built sibling_sets: %(siblings)s', {'siblings': sibling_sets})
     pinning = None
     threads_no = 1
 
@@ -738,6 +746,13 @@ def _pack_instance_onto_cores(available_siblings,
 
     def _get_pinning(threads_no, sibling_set, instance_cores):
         """Generate a CPU-vCPU pin mapping."""
+        LOG.debug('Attempting to pin:'
+                 '    threads_no: %(threads_no)s'
+                 '    sibling_set: %(sibling_set)s'
+                 '    instance_cores: %(cores)s',
+                    {'threads_no': threads_no,
+                     'sibling_set': sibling_set,
+                     'cores': instance_cores})
         if threads_no * len(sibling_set) < len(instance_cores):
             return
 
@@ -766,6 +781,9 @@ def _pack_instance_onto_cores(available_siblings,
             fields.CPUThreadAllocationPolicy.ISOLATE):
         # make sure we have at least one fully free core
         if threads_per_core not in sibling_sets:
+            LOG.debug('Host does not have any fully free thread sibling sets.'
+                      'It is not possible to emulate a non-SMT behavior '
+                      'for the isolate policy without this.')
             return
 
         pinning = _get_pinning(1,  # we only want to "use" one thread per core
@@ -785,6 +803,8 @@ def _pack_instance_onto_cores(available_siblings,
             if (instance_cell.cpu_thread_policy ==
                     fields.CPUThreadAllocationPolicy.REQUIRE):
                 if threads_no <= 1:
+                    LOG.debug('Skipping threads_no: %s, as it does not satisfy'
+                              ' the require policy', threads_no)
                     continue
 
             pinning = _get_pinning(threads_no, sibling_set,
@@ -792,10 +812,21 @@ def _pack_instance_onto_cores(available_siblings,
             if pinning:
                 break
 
+        # NOTE(sfinucan): If siblings weren't available and we're using PREFER
+        # (implicitly or explicitly), fall back to linear assignment across
+        # cores
+        if (instance_cell.cpu_thread_policy !=
+                fields.CPUThreadAllocationPolicy.REQUIRE and
+                not pinning):
+            pinning = list(zip(sorted(instance_cell.cpuset),
+                               itertools.chain(*sibling_set)))
+
         threads_no = _threads(instance_cell, threads_no)
 
     if not pinning:
         return
+    LOG.debug('Selected cores for pinning: %s, in cell %s', pinning,
+                                                            host_cell_id)
 
     topology = objects.VirtCPUTopology(sockets=1,
                                        cores=len(pinning) / threads_no,
@@ -848,6 +879,8 @@ def _numa_fit_instance_cell(host_cell, instance_cell, limit_cell=None):
 
     :returns: a new instance cell or None
     """
+    LOG.debug('Attempting to fit instance cell %(cell)s on host_cell '
+              '%(host_cell)s', {'cell': instance_cell, 'host_cell': host_cell})
     # NOTE (ndipanov): do not allow an instance to overcommit against
     # itself on any NUMA cell
     if (instance_cell.memory > host_cell.memory or
