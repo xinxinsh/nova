@@ -14389,32 +14389,48 @@ class LibvirtDriverTestCase(test.NoDBTestCase):
 
     def _test_finish_revert_migration_after_crash(self, backup_made=True,
                                                   del_inst_failed=False):
-        drvr = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), False)
-        drvr.image_backend = mock.Mock()
-        drvr.image_backend.image.return_value = drvr.image_backend
-        context = 'fake_context'
-        ins_ref = self._create_instance()
+        class FakeLoopingCall(object):
+            def start(self, *a, **k):
+                return self
 
-        with test.nested(
-                mock.patch.object(os.path, 'exists', return_value=backup_made),
-                mock.patch.object(libvirt_utils, 'get_instance_path'),
-                mock.patch.object(utils, 'execute'),
-                mock.patch.object(drvr, '_create_domain_and_network'),
-                mock.patch.object(drvr, '_get_guest_xml'),
-                mock.patch.object(shutil, 'rmtree'),
-                mock.patch.object(loopingcall, 'FixedIntervalLoopingCall'),
-        ) as (mock_stat, mock_path, mock_exec, mock_cdn, mock_ggx,
-              mock_rmtree, mock_looping_call):
-            mock_path.return_value = '/fake/foo'
+            def wait(self):
+                return None
+        context = 'fake_context'
+
+        instance = self._create_instance()
+        self.mox.StubOutWithMock(imagebackend.Backend, 'image')
+        self.mox.StubOutWithMock(libvirt_utils, 'get_instance_path')
+        self.mox.StubOutWithMock(os.path, 'exists')
+        self.mox.StubOutWithMock(shutil, 'rmtree')
+        self.mox.StubOutWithMock(utils, 'execute')
+
+        self.stubs.Set(blockinfo, 'get_disk_info', lambda *a: None)
+        self.stubs.Set(self.drvr, '_get_guest_xml',
+                       lambda *a, **k: None)
+        self.stubs.Set(self.drvr, '_create_domain_and_network',
+                       lambda *a, **kw: None)
+        self.stubs.Set(loopingcall, 'FixedIntervalLoopingCall',
+                       lambda *a, **k: FakeLoopingCall())
+
+        libvirt_utils.get_instance_path(instance).AndReturn('/fake/foo')
+        os.path.exists('/fake/foo_resize').AndReturn(backup_made)
+        if backup_made:
             if del_inst_failed:
-                mock_rmtree.side_effect = OSError(errno.ENOENT,
-                                                  'test exception')
-            drvr.finish_revert_migration(context, ins_ref, [])
-            if backup_made:
-                mock_exec.assert_called_once_with('mv', '/fake/foo_resize',
-                                                  '/fake/foo')
+                os_error = OSError(errno.ENOENT, 'No such file or directory')
+                shutil.rmtree('/fake/foo').AndRaise(os_error)
             else:
-                self.assertFalse(mock_exec.called)
+                shutil.rmtree('/fake/foo')
+            utils.execute('mv', '/fake/foo_resize', '/fake/foo')
+
+        imagebackend.Backend.image(mox.IgnoreArg(), 'disk').AndReturn(
+                fake_imagebackend.Raw())
+
+        self.mox.StubOutWithMock(fake_imagebackend.Raw, 'check_image_exists')
+        fake_imagebackend.Raw.check_image_exists().AndReturn(True)
+
+        self.mox.ReplayAll()
+
+        self.drvr.finish_revert_migration(context, instance, [])
 
     def test_finish_revert_migration_after_crash(self):
         self._test_finish_revert_migration_after_crash(backup_made=True)
@@ -14527,52 +14543,71 @@ class LibvirtDriverTestCase(test.NoDBTestCase):
         CONF.set_override('policy_dirs', [], group='oslo_policy')
         ins_ref = self._create_instance({'host': CONF.host})
 
-        drvr = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), False)
-        drvr.image_backend = mock.Mock()
-        drvr.image_backend.image.return_value = drvr.image_backend
+        def fake_os_path_exists(path):
+            return True
 
-        with test.nested(
-                mock.patch.object(os.path, 'exists'),
-                mock.patch.object(libvirt_utils, 'get_instance_path'),
-                mock.patch.object(utils, 'execute')) as (
-                mock_exists, mock_get_path, mock_exec):
-            mock_exists.return_value = True
-            mock_get_path.return_value = '/fake/inst'
+        self.stub_out('os.path.exists', fake_os_path_exists)
 
-            drvr._cleanup_resize(ins_ref, _fake_network_info(self, 1))
-            mock_get_path.assert_called_once_with(ins_ref, forceold=True)
-            mock_exec.assert_called_once_with('rm', '-rf', '/fake/inst_resize',
-                                              delay_on_retry=True, attempts=5)
+        self.mox.StubOutWithMock(imagebackend.Backend, 'image')
+        self.mox.StubOutWithMock(libvirt_utils, 'get_instance_path')
+        self.mox.StubOutWithMock(utils, 'execute')
+
+        libvirt_utils.get_instance_path(ins_ref,
+                forceold=True).AndReturn('/fake/inst')
+        utils.execute('rm', '-rf', '/fake/inst_resize', delay_on_retry=True,
+                      attempts=5)
+        imagebackend.Backend.image(ins_ref, 'disk').AndReturn(
+            fake_imagebackend.Raw())
+
+        self.mox.StubOutWithMock(fake_imagebackend.Raw, 'check_image_exists')
+        fake_imagebackend.Raw.check_image_exists().AndReturn(True)
+
+        self.mox.ReplayAll()
+        self.drvr._cleanup_resize(ins_ref,
+                                            _fake_network_info(self, 1))
 
     def test_cleanup_resize_not_same_host(self):
         CONF.set_override('policy_dirs', [], group='oslo_policy')
         host = 'not' + CONF.host
         ins_ref = self._create_instance({'host': host})
-        fake_net = _fake_network_info(self, 1)
 
-        drvr = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), False)
-        drvr.image_backend = mock.Mock()
-        drvr.image_backend.image.return_value = drvr.image_backend
+        def fake_os_path_exists(path):
+            return True
 
-        with test.nested(
-                mock.patch.object(os.path, 'exists'),
-                mock.patch.object(libvirt_utils, 'get_instance_path'),
-                mock.patch.object(utils, 'execute'),
-                mock.patch.object(drvr, '_undefine_domain'),
-                mock.patch.object(drvr, 'unplug_vifs'),
-                mock.patch.object(drvr, 'unfilter_instance')
-        ) as (mock_exists, mock_get_path, mock_exec, mock_undef,
-              mock_unplug, mock_unfilter):
-            mock_exists.return_value = True
-            mock_get_path.return_value = '/fake/inst'
+        def fake_undefine_domain(instance):
+            pass
 
-            drvr._cleanup_resize(ins_ref, fake_net)
-            mock_get_path.assert_called_once_with(ins_ref, forceold=True)
-            mock_exec.assert_called_once_with('rm', '-rf', '/fake/inst_resize',
-                                              delay_on_retry=True, attempts=5)
-            mock_undef.assert_called_once_with(ins_ref)
-            mock_unplug.assert_called_once_with(ins_ref, fake_net)
-            mock_unfilter.assert_called_once_with(ins_ref, fake_net)
+        def fake_unplug_vifs(instance, network_info, ignore_errors=False):
+            pass
+
+        def fake_unfilter_instance(instance, network_info):
+            pass
+
+        self.stub_out('os.path.exists', fake_os_path_exists)
+        self.stubs.Set(self.drvr, '_undefine_domain',
+                       fake_undefine_domain)
+        self.stubs.Set(self.drvr, 'unplug_vifs',
+                       fake_unplug_vifs)
+        self.stubs.Set(self.drvr.firewall_driver,
+                       'unfilter_instance', fake_unfilter_instance)
+
+        self.mox.StubOutWithMock(imagebackend.Backend, 'image')
+        self.mox.StubOutWithMock(libvirt_utils, 'get_instance_path')
+        self.mox.StubOutWithMock(utils, 'execute')
+
+        libvirt_utils.get_instance_path(ins_ref,
+                forceold=True).AndReturn('/fake/inst')
+        utils.execute('rm', '-rf', '/fake/inst_resize', delay_on_retry=True,
+                      attempts=5)
+        imagebackend.Backend.image(ins_ref, 'disk').AndReturn(
+                fake_imagebackend.Raw())
+
+        self.mox.StubOutWithMock(fake_imagebackend.Raw, 'check_image_exists')
+        fake_imagebackend.Raw.check_image_exists().AndReturn(True)
+
+        self.mox.ReplayAll()
+        self.drvr._cleanup_resize(ins_ref,
+                                            _fake_network_info(self, 1))
 
     def test_cleanup_resize_snap_backend(self):
         CONF.set_override('policy_dirs', [], group='oslo_policy')
@@ -14596,6 +14631,29 @@ class LibvirtDriverTestCase(test.NoDBTestCase):
                                               delay_on_retry=True, attempts=5)
             mock_remove.assert_called_once_with(
                     libvirt_utils.RESIZE_SNAPSHOT_NAME, ignore_errors=True)
+
+    def test_cleanup_resize_snap_backend_image_does_not_exist(self):
+        CONF.set_override('policy_dirs', [], group='oslo_policy')
+        ins_ref = self._create_instance({'host': CONF.host})
+        drvr = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), False)
+        drvr.image_backend = mock.Mock()
+        drvr.image_backend.image.return_value = drvr.image_backend
+        drvr.image_backend.check_image_exists.return_value = False
+
+        with test.nested(
+                mock.patch.object(os.path, 'exists'),
+                mock.patch.object(libvirt_utils, 'get_instance_path'),
+                mock.patch.object(utils, 'execute'),
+                mock.patch.object(drvr.image_backend, 'remove_snap')) as (
+                mock_exists, mock_get_path, mock_exec, mock_remove):
+            mock_exists.return_value = True
+            mock_get_path.return_value = '/fake/inst'
+
+            drvr._cleanup_resize(ins_ref, _fake_network_info(self, 1))
+            mock_get_path.assert_called_once_with(ins_ref, forceold=True)
+            mock_exec.assert_called_once_with('rm', '-rf', '/fake/inst_resize',
+                                              delay_on_retry=True, attempts=5)
+            self.assertFalse(mock_remove.called)
 
     def test_get_instance_disk_info_exception(self):
         instance = self._create_instance()
