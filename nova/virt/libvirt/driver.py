@@ -1956,8 +1956,30 @@ class LibvirtDriver(driver.ComputeDriver):
                    % {'user': user, 'error_code': error_code, 'ex': ex})
             raise exception.NovaException(msg)
 
+    def _can_quiesce(self, instance, image_meta):
+        if (CONF.libvirt.virt_type not in ('kvm', 'qemu') or
+            not self._host.has_min_version(MIN_LIBVIRT_FSFREEZE_VERSION)):
+            raise exception.InstanceQuiesceNotSupported(
+                instance_id=instance.uuid)
+
+        if not image_meta.properties.get('hw_qemu_guest_agent', False):
+            raise exception.QemuGuestAgentNotEnabled()
+
     def _set_quiesced(self, context, instance, image_meta, quiesced):
-        self._core._set_quiesced(context, instance, image_meta, quiesced)
+        self._can_quiesce(instance, image_meta)
+        try:
+            guest = self._host.get_guest(instance)
+            if quiesced:
+                guest.freeze_filesystems()
+            else:
+                guest.thaw_filesystems()
+        except libvirt.libvirtError as ex:
+            error_code = ex.get_error_code()
+            msg = (_('Error from libvirt while quiescing %(instance_name)s: '
+                     '[Error Code %(error_code)s] %(ex)s')
+                   % {'instance_name': instance.name,
+                      'error_code': error_code, 'ex': ex})
+            raise exception.NovaException(msg)
 
     def quiesce(self, context, instance, image_meta):
         """Freeze the guest filesystems to prepare for snapshot.
@@ -1969,6 +1991,20 @@ class LibvirtDriver(driver.ComputeDriver):
     def unquiesce(self, context, instance, image_meta):
         """Thaw the guest filesystems after snapshot."""
         self._set_quiesced(context, instance, image_meta, False)
+
+    def _set_quiesced_chinac(self, context, instance, image_meta, quiesced):
+        self._core._set_quiesced(context, instance, image_meta, quiesced)
+
+    def quiesce_chinac(self, context, instance, image_meta):
+        """Chinac Freeze the guest filesystems to prepare for snapshot.
+
+        The qemu-guest-agent must be setup to execute fsfreeze.
+        """
+        self._set_quiesced_chinac(context, instance, image_meta, True)
+
+    def unquiesce_chinac(self, context, instance, image_meta):
+        """Chinac Thaw the guest filesystems after snapshot."""
+        self._set_quiesced_chinac(context, instance, image_meta, False)
 
     def _live_snapshot(self, context, instance, guest, disk_path, out_path,
                        source_format, image_format, image_meta):

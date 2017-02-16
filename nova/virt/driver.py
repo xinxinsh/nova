@@ -1649,6 +1649,34 @@ class ComputeDriver(object):
         """
         raise NotImplementedError()
 
+    def quiesce_chinac(self, context, instance, image_meta):
+        """Quiesce the specified instance to prepare for snapshots.
+
+        If the specified instance doesn't support quiescing,
+        InstanceQuiesceNotSupported is raised. When it fails to quiesce by
+        other errors (e.g. agent timeout), NovaException is raised.
+
+        :param context:  request context
+        :param instance: nova.objects.instance.Instance to be quiesced
+        :param nova.objects.ImageMeta image_meta:
+            The metadata of the image of the instance.
+        """
+        raise NotImplementedError()
+
+    def unquiesce_chinac(self, context, instance, image_meta):
+        """Unquiesce the specified instance after snapshots.
+
+        If the specified instance doesn't support quiescing,
+        InstanceQuiesceNotSupported is raised. When it fails to quiesce by
+        other errors (e.g. agent timeout), NovaException is raised.
+
+        :param context:  request context
+        :param instance: nova.objects.instance.Instance to be unquiesced
+        :param nova.objects.ImageMeta image_meta:
+            The metadata of the image of the instance.
+        """
+        raise NotImplementedError()
+
     def network_binding_host_id(self, context, instance):
         """Get host ID to associate with network ports.
 

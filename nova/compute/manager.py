@@ -7351,28 +7351,75 @@ class ComputeManager(manager.Manager):
                                          in migrations])
 
         inst_filters = {'deleted': True, 'soft_deleted': False,
-                        'uuid': inst_uuid_from_migrations, 'host': CONF.host}
+                        'uuid': inst_uuid_from_migrations}
         attrs = ['info_cache', 'security_groups', 'system_metadata']
         with utils.temporary_mutation(context, read_deleted='yes'):
             instances = objects.InstanceList.get_by_filters(
                 context, inst_filters, expected_attrs=attrs, use_slave=True)
 
         for instance in instances:
-            for migration in migrations:
-                if instance.uuid == migration.instance_uuid:
-                    # Delete instance files if not cleanup properly either
-                    # from the source or destination compute nodes when
-                    # the instance is deleted during resizing.
-                    self.driver.delete_instance_files(instance)
-                    try:
-                        migration.status = 'failed'
-                        with migration.obj_as_admin():
-                            migration.save()
-                    except exception.MigrationNotFound:
-                        LOG.warning(_LW("Migration %s is not found."),
-                                    migration.id, context=context,
-                                    instance=instance)
-                    break
+            if instance.host != CONF.host:
+                for migration in migrations:
+                    if instance.uuid == migration.instance_uuid:
+                        # Delete instance files if not cleanup properly either
+                        # from the source or destination compute nodes when
+                        # the instance is deleted during resizing.
+                        self.driver.delete_instance_files(instance)
+                        try:
+                            migration.status = 'failed'
+                            with migration.obj_as_admin():
+                                migration.save()
+                        except exception.MigrationNotFound:
+                            LOG.warning(_LW("Migration %s is not found."),
+                                        migration.id, context=context,
+                                        instance=instance)
+                        break
+
+    @messaging.expected_exceptions(exception.InstanceQuiesceNotSupported,
+                                   exception.QemuGuestAgentNotEnabled,
+                                   exception.NovaException,
+                                   NotImplementedError)
+    @wrap_exception()
+    def quiesce_instance(self, context, instance):
+        """Quiesce an instance on this host."""
+        context = context.elevated()
+        image_meta = objects.ImageMeta.from_instance(instance)
+        self.driver.quiesce(context, instance, image_meta)
+
+    def _wait_for_snapshots_completion(self, context, mapping):
+        for mapping_dict in mapping:
+            if mapping_dict.get('source_type') == 'snapshot':
+
+                def _wait_snapshot():
+                    snapshot = self.volume_api.get_snapshot(
+                        context, mapping_dict['snapshot_id'])
+                    if snapshot.get('status') != 'creating':
+                        raise loopingcall.LoopingCallDone()
+
+                timer = loopingcall.FixedIntervalLoopingCall(_wait_snapshot)
+                timer.start(interval=0.5).wait()
+
+    @messaging.expected_exceptions(exception.InstanceQuiesceNotSupported,
+                                   exception.QemuGuestAgentNotEnabled,
+                                   exception.NovaException,
+                                   NotImplementedError)
+    @wrap_exception()
+    def unquiesce_instance(self, context, instance, mapping=None):
+        """Unquiesce an instance on this host.
+
+        If snapshots' image mapping is provided, it waits until snapshots are
+        completed before unqueiscing.
+        """
+        context = context.elevated()
+        if mapping:
+            try:
+                self._wait_for_snapshots_completion(context, mapping)
+            except Exception as error:
+                LOG.exception(_LE("Exception while waiting completion of "
+                                  "volume snapshots: %s"),
+                              error, instance=instance)
+        image_meta = objects.ImageMeta.from_instance(instance)
+        self.driver.unquiesce(context, instance, image_meta)
 
     def _set_instance_error_state(self, context, instance):
         try:
@@ -7388,7 +7435,7 @@ class ComputeManager(manager.Manager):
                                    exception.NovaException,
                                    NotImplementedError)
     @wrap_exception()
-    def quiesce_instance(self, context, instance):
+    def quiesce_instance_chinac(self, context, instance):
         """Quiesce an instance on this host."""
 
         @utils.synchronized(instance.uuid)
@@ -7413,7 +7460,7 @@ class ComputeManager(manager.Manager):
                 image_meta = image_service.show(context, instance.image_ref)
 
             try:
-                self.driver.quiesce(context, instance, image_meta)
+                self.driver.quiesce_chinac(context, instance, image_meta)
                 instance.vm_state = vm_states.FROZEN
                 instance.task_state = None
                 instance.save()
@@ -7445,7 +7492,8 @@ class ComputeManager(manager.Manager):
                         image_service = glance.get_default_image_service()
                         image_meta = image_service.show(context,
                                                         instance.image_ref)
-                        self.driver.unquiesce(context, instance, image_meta)
+                        self.driver.unquiesce_chinac(context, instance,
+                                                     image_meta)
                         instance.vm_state = vm_states.ACTIVE
                         instance.save()
                     except Exception:
@@ -7453,25 +7501,12 @@ class ComputeManager(manager.Manager):
 
         _do_quiesce_instance(context, instance)
 
-    def _wait_for_snapshots_completion(self, context, mapping):
-        for mapping_dict in mapping:
-            if mapping_dict.get('source_type') == 'snapshot':
-
-                def _wait_snapshot():
-                    snapshot = self.volume_api.get_snapshot(
-                        context, mapping_dict['snapshot_id'])
-                    if snapshot.get('status') != 'creating':
-                        raise loopingcall.LoopingCallDone()
-
-                timer = loopingcall.FixedIntervalLoopingCall(_wait_snapshot)
-                timer.start(interval=0.5).wait()
-
     @messaging.expected_exceptions(exception.InstanceQuiesceNotSupported,
                                    exception.QemuGuestAgentNotEnabled,
                                    exception.NovaException,
                                    NotImplementedError)
     @wrap_exception()
-    def unquiesce_instance(self, context, instance, mapping=None):
+    def unquiesce_instance_chinac(self, context, instance, mapping=None):
         """Unquiesce an instance on this host.
 
         If snapshots' image mapping is provided, it waits until snapshots are
@@ -7509,7 +7544,7 @@ class ComputeManager(manager.Manager):
                     image_service = glance.get_default_image_service()
                     image_meta = image_service.show(context,
                                                     instance.image_ref)
-                self.driver.unquiesce(context, instance, image_meta)
+                self.driver.unquiesce_chinac(context, instance, image_meta)
                 instance.vm_state = vm_states.ACTIVE
                 instance.task_state = None
                 instance.save()
