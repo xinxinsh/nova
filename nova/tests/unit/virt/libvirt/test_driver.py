@@ -8035,15 +8035,15 @@ class LibvirtConnTestCase(test.NoDBTestCase):
             host.DomainJobInfo(
                 type=fakelibvirt.VIR_DOMAIN_JOB_NONE),
             host.DomainJobInfo(
-                type=fakelibvirt.VIR_DOMAIN_JOB_UNBOUNDED, data_remaining=90),
+                type=fakelibvirt.VIR_DOMAIN_JOB_UNBOUNDED),
             host.DomainJobInfo(
-                type=fakelibvirt.VIR_DOMAIN_JOB_UNBOUNDED, data_remaining=90),
+                type=fakelibvirt.VIR_DOMAIN_JOB_UNBOUNDED),
             host.DomainJobInfo(
-                type=fakelibvirt.VIR_DOMAIN_JOB_UNBOUNDED, data_remaining=90),
+                type=fakelibvirt.VIR_DOMAIN_JOB_UNBOUNDED),
             host.DomainJobInfo(
-                type=fakelibvirt.VIR_DOMAIN_JOB_UNBOUNDED, data_remaining=90),
+                type=fakelibvirt.VIR_DOMAIN_JOB_UNBOUNDED),
             host.DomainJobInfo(
-                type=fakelibvirt.VIR_DOMAIN_JOB_UNBOUNDED, data_remaining=90),
+                type=fakelibvirt.VIR_DOMAIN_JOB_UNBOUNDED),
             "thread-finish",
             "domain-stop",
             host.DomainJobInfo(
@@ -8102,15 +8102,15 @@ class LibvirtConnTestCase(test.NoDBTestCase):
             host.DomainJobInfo(
                 type=fakelibvirt.VIR_DOMAIN_JOB_NONE),
             host.DomainJobInfo(
-                type=fakelibvirt.VIR_DOMAIN_JOB_UNBOUNDED),
+                type=fakelibvirt.VIR_DOMAIN_JOB_UNBOUNDED, data_remaining=90),
             host.DomainJobInfo(
-                type=fakelibvirt.VIR_DOMAIN_JOB_UNBOUNDED),
+                type=fakelibvirt.VIR_DOMAIN_JOB_UNBOUNDED, data_remaining=90),
             host.DomainJobInfo(
-                type=fakelibvirt.VIR_DOMAIN_JOB_UNBOUNDED),
+                type=fakelibvirt.VIR_DOMAIN_JOB_UNBOUNDED, data_remaining=90),
             host.DomainJobInfo(
-                type=fakelibvirt.VIR_DOMAIN_JOB_UNBOUNDED),
+                type=fakelibvirt.VIR_DOMAIN_JOB_UNBOUNDED, data_remaining=90),
             host.DomainJobInfo(
-                type=fakelibvirt.VIR_DOMAIN_JOB_UNBOUNDED),
+                type=fakelibvirt.VIR_DOMAIN_JOB_UNBOUNDED, data_remaining=90),
             "thread-finish",
             "domain-stop",
             host.DomainJobInfo(
