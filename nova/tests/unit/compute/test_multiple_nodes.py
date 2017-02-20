@@ -95,6 +95,8 @@ class MultiNodeComputeTestCase(BaseTestCase):
                                    'free_ram_mb': 130560,
                                    'metrics': '',
                                    'numa_topology': '',
+                                   'pci_stats': '',
+                                   'extra_resources': '',
                                    'stats': '',
                                    'id': 2,
                                    'host': 'fake_phyp1',

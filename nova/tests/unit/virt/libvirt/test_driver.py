@@ -9192,6 +9192,7 @@ class LibvirtConnTestCase(test.NoDBTestCase):
         # Volume-backed instance created without image
         instance_ref = self.test_instance
         instance_ref['image_ref'] = ''
+        instance_ref['iso'] = ''
         instance_ref['root_device_name'] = '/dev/sda'
         instance_ref['ephemeral_gb'] = 0
         instance_ref['uuid'] = uuidutils.generate_uuid()

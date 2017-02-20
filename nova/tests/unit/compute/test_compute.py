@@ -195,6 +195,8 @@ class BaseTestCase(test.TestCase):
                                    'metrics': '',
                                    'stats': '',
                                    'numa_topology': '',
+                                   'extra_resources': '',
+                                   'pci_stats': '',
                                    'id': 2,
                                    'host': 'fake_phyp1',
                                    'cpu_allocation_ratio': 16.0,
