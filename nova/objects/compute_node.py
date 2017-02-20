@@ -94,6 +94,8 @@ class ComputeNode(base.NovaPersistentObject, base.NovaObject,
         'cpu_allocation_ratio': fields.FloatField(),
         'ram_allocation_ratio': fields.FloatField(),
         'disk_allocation_ratio': fields.FloatField(),
+        'pci_stats': fields.StringField(nullable=True),
+        'extra_resources': fields.StringField(nullable=True),
         }
 
     def obj_make_compatible(self, primitive, target_version):
