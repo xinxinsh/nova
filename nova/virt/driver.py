@@ -1748,6 +1748,18 @@ class ComputeDriver(object):
         """
         raise NotImplementedError()
 
+    def rename_instance(self, context, instance, update_dict):
+        pass
+
+    def list_phy_cdroms(self, context):
+        pass
+
+    def attach_phy_cdrom(self, context, instance, cdrom):
+        pass
+
+    def detach_phy_cdrom(self, context, instance, cdrom):
+        pass
+
 
 def load_compute_driver(virtapi, compute_driver=None):
     """Load a compute driver module.

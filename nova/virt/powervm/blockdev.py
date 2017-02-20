@@ -203,6 +203,25 @@ class PowerVMLocalVolumeAdapter(PowerVMDiskAdapter):
 
         return {'device_name': disk_name}
 
+    def create_iso_from_isofile(self, context, instance, iso_name, iso_id):
+        file_path = os.path.join(CONF.powervm.powervm_img_local_path,
+                                 iso_id)
+        if not os.path.isfile(file_path):
+            LOG.debug("Fetching iso '%s' from glance" % iso_id)
+            images.fetch(context, iso_id, file_path,
+                        instance['user_id'],
+                        instance['project_id'])
+        else:
+            LOG.debug("Using iso found at '%s'" % file_path)
+
+        LOG.debug("Ensuring iso '%s' exists on IVM" % file_path)
+        remote_path = CONF.powervm.powervm_img_remote_path
+        remote_file_name, size = self._copy_image_file(file_path, remote_path)
+        vopts = self.run_vios_command("ioscli lsrep -field name -fmt ,")
+        if iso_name not in vopts:
+            self.run_vios_command("ioscli mkvopt -name %s -file %s -ro" %
+                                  (iso_name, remote_file_name))
+
     def create_image_from_volume(self, device_name, context,
                                  image_id, image_meta, update_task_state):
         """Capture the contents of a volume and upload to glance

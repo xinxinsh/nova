@@ -1215,6 +1215,27 @@ class ComputeAPI(object):
                           usb_vid=usb_vid,
                           usb_pid=usb_pid)
 
+    def list_phy_cdroms(self, ctxt, host):
+        version = '4.6'
+        cctxt = self.client.prepare(server=host, version=version)
+        return cctxt.call(ctxt, 'list_phy_cdroms')
+
+    def attach_phy_cdrom(self, ctxt, instance, cdrom):
+        version = '4.6'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                version=version)
+        return cctxt.call(ctxt, 'attach_phy_cdrom',
+                          instance=instance,
+                          cdrom=cdrom)
+
+    def detach_phy_cdrom(self, ctxt, instance, cdrom):
+        version = '4.6'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                version=version)
+        return cctxt.call(ctxt, 'detach_phy_cdrom',
+                          instance=instance,
+                          cdrom=cdrom)
+
     def call_qga(self, ctxt, instance, cmd, async, timeout):
         version = '4.6'
         rpc_timeout = timeout + 5
@@ -1329,3 +1350,11 @@ class ComputeAPI(object):
         cctxt.call(ctxt, 'image_rollback',
                    instance=instance,
                    image_meta=image_meta)
+
+    def rename_instance(self, ctxt, instance, update_dict):
+        version = '4.0'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                                    version=version)
+        cctxt.cast(ctxt, 'rename_instance',
+                   instance=instance,
+                   update_dict=update_dict)

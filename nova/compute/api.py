@@ -4179,6 +4179,15 @@ class API(base.Base):
         return self.compute_rpcapi.usb_status(context, instance,
                                               host, usb_vid, usb_pid)
 
+    def list_phy_cdroms(self, context, host):
+        return self.compute_rpcapi.list_phy_cdroms(context, host)
+
+    def attach_phy_cdrom(self, context, instance, cdrom):
+        return self.compute_rpcapi.attach_phy_cdrom(context, instance, cdrom)
+
+    def detach_phy_cdrom(self, context, instance, cdrom):
+        return self.compute_rpcapi.detach_phy_cdrom(context, instance, cdrom)
+
     @wrap_check_policy
     @check_instance_lock
     def call_qga(self, context, instance, cmd, async, timeout):
@@ -4568,6 +4577,9 @@ class API(base.Base):
             raise exception.ImageNotActive(image_id=system_snapshot_id)
 
         self.compute_rpcapi.image_rollback(context, instance, image_meta)
+
+    def rename_instance(self, context, instance, update_dict):
+        self.compute_rpcapi.rename_instance(context, instance, update_dict)
 
 
 class HostAPI(base.Base):

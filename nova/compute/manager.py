@@ -7620,6 +7620,18 @@ class ComputeManager(manager.Manager):
     def usb_status(self, context, instance, usb_vid, usb_pid):
         return self.driver.usb_status(context, instance, usb_vid, usb_pid)
 
+    @wrap_exception()
+    def list_phy_cdroms(self, context):
+        return self.driver.list_phy_cdroms(context)
+
+    @wrap_exception()
+    def attach_phy_cdrom(self, context, instance, cdrom):
+        self.driver.attach_phy_cdrom(context, instance, cdrom)
+
+    @wrap_exception()
+    def detach_phy_cdrom(self, context, instance, cdrom):
+        self.driver.detach_phy_cdrom(context, instance, cdrom)
+
     @object_compat
     @wrap_exception()
     @wrap_instance_fault
@@ -7909,3 +7921,7 @@ class ComputeManager(manager.Manager):
 
         instance.task_state = None
         instance.save()
+
+    @wrap_exception()
+    def rename_instance(self, context, instance, update_dict):
+        self.driver.rename_instance(context, instance, update_dict)

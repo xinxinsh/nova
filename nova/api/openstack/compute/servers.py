@@ -832,6 +832,7 @@ class ServersController(wsgi.Controller):
         try:
             # NOTE(mikal): this try block needs to stay because save() still
             # might throw an exception.
+            self.compute_api.rename_instance(ctxt, instance, update_dict)
             instance.update(update_dict)
             instance.save()
             return self._view_builder.show(req, instance,

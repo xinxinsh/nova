@@ -201,6 +201,10 @@ class AccessIPsExtAPIValidationTestV21(test.TestCase):
         return res_dict
 
     def _test_update(self, params):
+        def rename_instance(*args, **kwargs):
+            pass
+
+        self.stubs.Set(compute_api.API, 'rename_instance', rename_instance)
         body = {
             'server': {
             },

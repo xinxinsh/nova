@@ -1927,6 +1927,10 @@ class ServersControllerUpdateTest(ControllerTest):
         return req
 
     def test_update_server_all_attributes(self):
+        self.mox.StubOutWithMock(compute_api.API, 'rename_instance')
+        compute_api.API.rename_instance(mox.IgnoreArg(), mox.IgnoreArg(),
+                                        mox.IgnoreArg())
+        self.mox.ReplayAll()
         body = {'server': {
                   'name': 'server_test',
                }}
@@ -1937,6 +1941,10 @@ class ServersControllerUpdateTest(ControllerTest):
         self.assertEqual(res_dict['server']['name'], 'server_test')
 
     def test_update_server_name(self):
+        self.mox.StubOutWithMock(compute_api.API, 'rename_instance')
+        compute_api.API.rename_instance(mox.IgnoreArg(), mox.IgnoreArg(),
+                                        mox.IgnoreArg())
+        self.mox.ReplayAll()
         body = {'server': {'name': 'server_test'}}
         req = self._get_request(body, {'name': 'server_test'})
         res_dict = self.controller.update(req, FAKE_UUID, body=body)
@@ -1962,6 +1970,10 @@ class ServersControllerUpdateTest(ControllerTest):
                           req, FAKE_UUID, body=body)
 
     def test_update_server_name_with_spaces_in_the_middle(self):
+        self.mox.StubOutWithMock(compute_api.API, 'rename_instance')
+        compute_api.API.rename_instance(mox.IgnoreArg(), mox.IgnoreArg(),
+                                        mox.IgnoreArg())
+        self.mox.ReplayAll()
         self.stub_out('nova.db.instance_get',
                 fakes.fake_instance_get(name='server_test'))
         req = fakes.HTTPRequest.blank('/fake/servers/%s' % FAKE_UUID)
@@ -1983,6 +1995,10 @@ class ServersControllerUpdateTest(ControllerTest):
                           self.controller.update, req, FAKE_UUID, body=body)
 
     def test_update_server_name_with_leading_trailing_spaces_compat_mode(self):
+        self.mox.StubOutWithMock(compute_api.API, 'rename_instance')
+        compute_api.API.rename_instance(mox.IgnoreArg(), mox.IgnoreArg(),
+                                        mox.IgnoreArg())
+        self.mox.ReplayAll()
         self.stub_out('nova.db.instance_get',
                 fakes.fake_instance_get(name='server_test'))
         req = fakes.HTTPRequest.blank('/fake/servers/%s' % FAKE_UUID)
@@ -2028,6 +2044,11 @@ class ServersControllerUpdateTest(ControllerTest):
     def test_update_server_not_found_on_update(self):
         def fake_update(*args, **kwargs):
             raise exception.InstanceNotFound(instance_id='fake')
+
+        self.mox.StubOutWithMock(compute_api.API, 'rename_instance')
+        compute_api.API.rename_instance(mox.IgnoreArg(), mox.IgnoreArg(),
+                                        mox.IgnoreArg())
+        self.mox.ReplayAll()
 
         self.stub_out('nova.db.instance_update_and_get_original', fake_update)
         body = {'server': {'name': 'server_test'}}
@@ -2138,6 +2159,11 @@ class ServersControllerUpdateTestV219(ServersControllerUpdateTest):
         return req
 
     def _update_server_desc(self, set_desc, desc=None):
+        self.mox.StubOutWithMock(compute_api.API, 'rename_instance')
+        compute_api.API.rename_instance(mox.IgnoreArg(), mox.IgnoreArg(),
+                                        mox.IgnoreArg())
+        self.mox.ReplayAll()
+
         body = {'server': {}}
         if set_desc:
             body['server']['description'] = desc
@@ -2166,6 +2192,10 @@ class ServersControllerUpdateTestV219(ServersControllerUpdateTest):
         self.assertIsNone(res_dict['server']['description'])
 
     def test_update_server_all_attributes(self):
+        self.mox.StubOutWithMock(compute_api.API, 'rename_instance')
+        compute_api.API.rename_instance(mox.IgnoreArg(), mox.IgnoreArg(),
+                                        mox.IgnoreArg())
+        self.mox.ReplayAll()
         body = {'server': {
                   'name': 'server_test',
                   'description': 'server_desc'

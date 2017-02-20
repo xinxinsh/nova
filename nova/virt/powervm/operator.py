@@ -340,9 +340,18 @@ class PowerVMOperator(object):
 
     def spawn(self, context, instance, image_meta,
               network_info, block_device_info):
-        def _create_image(context, instance, image_id, block_device_info):
+        def _create_image(context, instance, image_meta, block_device_info):
             """Fetch image from glance and copy it to the remote system."""
             try:
+                if hasattr(image_meta, 'id'):
+                    image_id = image_meta.id
+                    image_name = image_meta.name
+                    if image_meta.disk_format == 'iso':
+                        is_iso = True
+                    else:
+                        is_iso = False
+                else:
+                    image_id = None
                 lpar_id = self._operator.get_lpar(
                     instance['display_name'])['lpar_id']
                 vhost = self._operator.get_vhost_by_instance_id(lpar_id)
@@ -350,17 +359,43 @@ class PowerVMOperator(object):
                     block_device_mapping = \
                         block_device_info.get('block_device_mapping') or []
                 if image_id:
-                    root_volume = self._disk_adapter.create_volume_from_image(
-                        context, instance, image_id)
-                    self._disk_adapter.attach_volume_to_host(root_volume)
-                    self._operator.attach_disk_to_vhost(
-                        root_volume['device_name'], vhost)
+                    if is_iso:
+                        size_gb = max(instance.root_gb,
+                                      constants.POWERVM_MIN_ROOT_GB)
+                        size = size_gb * 1024 * 1024 * 1024
+                        disk_name = self._disk_adapter.create_volume(size)
+                        self._disk_adapter.create_iso_from_isofile(context,
+                            instance, image_name, image_id)
+                        self._operator.attach_vopt_to_vhost(image_name, vhost)
+                        self._operator.attach_disk_to_vhost(disk_name, vhost)
+                    else:
+                        root_volume = \
+                            self._disk_adapter.create_volume_from_image(
+                                context, instance, image_id)
+                        self._disk_adapter.attach_volume_to_host(root_volume)
+                        self._operator.attach_disk_to_vhost(
+                            root_volume['device_name'], vhost)
                 if block_device_mapping:
                     for disk in block_device_mapping:
-                        volume_data = disk['connection_info']['data']
-                        volume_name = volume_data['volume_name'][0:15]
-                        self._operator.attach_disk_to_vhost(
-                            volume_name, vhost)
+                        driver_volume_type = \
+                            disk['connection_info']['driver_volume_type']
+                        if driver_volume_type == 'iscsi':
+                            volume_data = disk['connection_info']['data']
+                            self._disk_adapter.discovery_device(volume_data)
+                            conn_info = self._get_volume_conn_info(volume_data)
+                            dev_info = self.get_devname_by_conn_info(conn_info)
+                            pvid = self._operator.get_hdisk_pvid(
+                                dev_info['device_name'])
+                            if pvid == 'none':
+                                self._operator.chdev_hdisk_pvid(
+                                    dev_info['device_name'])
+                            self._operator.attach_disk_to_vhost(
+                                dev_info['device_name'], vhost)
+                        else:
+                            volume_data = disk['connection_info']['data']
+                            volume_name = volume_data['volume_name'][0:15]
+                            self._operator.attach_disk_to_vhost(
+                                volume_name, vhost)
 
             except Exception as e:
                 LOG.exception(_LE("PowerVM image creation failed: %s") %
@@ -368,10 +403,6 @@ class PowerVMOperator(object):
                 raise exception.PowerVMImageCreationFailed()
 
         spawn_start = time.time()
-        if hasattr(image_meta, 'id'):
-            image_id = image_meta.id
-        else:
-            image_id = None
 
         try:
             try:
@@ -398,7 +429,7 @@ class PowerVMOperator(object):
                 raise exception.PowerVMLPARCreationFailed(
                     instance_name=instance['display_name'])
 
-            _create_image(context, instance, image_id, block_device_info)
+            _create_image(context, instance, image_meta, block_device_info)
             LOG.debug("Activating the LPAR instance '%s'"
                       % instance['display_name'])
             self._operator.start_lpar(instance['display_name'])
@@ -435,13 +466,14 @@ class PowerVMOperator(object):
         LOG.info(_LI("Instance spawned in %s seconds") % spawn_time,
                  instance=instance)
 
-    def destroy(self, instance_name, destroy_disks=True):
+    def destroy(self, instance_name, block_device_info=None,
+                destroy_disks=True):
         """Destroy (shutdown and delete) the specified instance.
 
         :param instance_name: Instance name.
         """
         try:
-            self._cleanup(instance_name, destroy_disks)
+            self._cleanup(instance_name, block_device_info, destroy_disks)
         except exception.PowerVMLPARInstanceNotFound:
             LOG.warn(_LW("During destroy, LPAR instance '%s' was not found on "
                        "PowerVM system.") % instance_name)
@@ -480,21 +512,49 @@ class PowerVMOperator(object):
         if previous_state == 'Running':
             self.power_on(instance_name)
 
-    def _cleanup(self, instance_name, destroy_disks=True):
+    def _cleanup(self, instance_name, block_device_info=None,
+                 destroy_disks=True):
         lpar_id = self._get_instance(instance_name)['lpar_id']
         try:
             vhost = self._operator.get_vhost_by_instance_id(lpar_id)
             disk_name = self._operator.get_disk_name_by_vhost(vhost)[0]
+            vtopt_names = self._operator.get_vtopt_name_by_vhost(vhost)
 
             LOG.debug("Shutting down the instance '%s'" % instance_name)
             self._operator.stop_lpar(instance_name)
+
+            volume_names = []
+            if block_device_info is not None:
+                block_device_mapping = \
+                    block_device_info.get('block_device_mapping') or []
+            else:
+                block_device_mapping = []
+            if block_device_mapping:
+                for disk in block_device_mapping:
+                    driver_volume_type = \
+                        disk['connection_info']['driver_volume_type']
+                    volume_data = disk['connection_info']['data']
+                    volume_name = 'volume-' + volume_data['volume_id']
+                    if driver_volume_type == 'iscsi':
+                        self._disk_adapter.cancel_discovery_device(
+                            volume_name[0:15])
+                        conn_info = self._get_volume_conn_info(volume_data)
+                        volume_info = self.get_devname_by_conn_info(conn_info)
+                    elif driver_volume_type == 'lvmpower':
+                        volume_info = {'device_name': volume_name[0:15]}
+                    volume_names.append(volume_info['device_name'])
+                    self._disk_adapter.detach_volume_from_vhost(volume_info)
 
             # dperaza: LPAR should be deleted first so that vhost is
             # cleanly removed and detached from disk device.
             LOG.debug("Deleting the LPAR instance '%s'" % instance_name)
             self._operator.remove_lpar(instance_name)
 
-            if disk_name and destroy_disks:
+            if vtopt_names:
+                for vtopt in vtopt_names:
+                    self._operator.remove_vtd(vtopt)
+
+            if disk_name and disk_name not in volume_names and destroy_disks:
                 # TODO(mrodden): we should also detach from the instance
                 # before we start deleting things...
                 volume_info = {'device_name': disk_name}
@@ -661,27 +721,125 @@ class PowerVMOperator(object):
         if power_on:
             self._operator.start_lpar(lpar['name'])
 
+    def _get_volume_conn_info(self, volume_data):
+        iqn = None
+        lun = None
+        conn_info = []
+        if not volume_data:
+            return None
+        try:
+            if 'target_iqn' in volume_data:
+                iqn = volume_data['target_iqn']
+            if 'target_lun' in volume_data:
+                lun = hex(volume_data['target_lun'])
+            if iqn and lun is not None:
+                conn_info.append((iqn, lun))
+            else:
+                return None
+
+        except Exception as e:
+            LOG.error(_("Failed to convert volume_data to conn: %s") % e)
+            return None
+        return conn_info
+
+    def get_devname_by_conn_info(self, conn_info):
+        dev_info = {}
+        disk = []
+        outputs = []
+        hdisks = self._operator.get_all_hdisk()
+        if conn_info:
+            for iqn, lun in conn_info:
+                output = self._operator.get_hdisk_by_iqn(hdisks, iqn, lun)
+                if len(output) == 0:
+                    continue
+                for o in output:
+                    devname = o['name']
+
+                    if disk.count(devname) == 0:
+                        disk.append(devname)
+
+        if len(disk) == 1:
+            dev_info = {'device_name': disk[0]}
+        elif len(disk) > 1:
+            raise exception.\
+                PowerVMInvalidLUNPathInfoMultiple(conn_info, outputs)
+        else:
+            raise exception.\
+                PowerVMInvalidLUNPathInfoNone(conn_info, outputs)
+
+        return dev_info
+
     def get_volume_connector(self, instance):
         """Return volume connector information."""
+        initiator = self._disk_adapter.get_initiator_name()
         connector = {'ip': CONF.powervm.powervm_mgr,
-                     'initiator': None,
+                     'initiator': initiator,
                      'host': CONF.powervm.powervm_mgr}
         connector['instance'] = instance['display_name']
         return connector
 
     def attach_volume(self, connection_info, instance):
         volume_data = connection_info['data']
-        volume_name = volume_data['volume_name']
+        driver_type = connection_info.get('driver_volume_type')
+        volume_name = 'volume-' + volume_data['volume_id']
         lpar_id = self._operator.get_lpar(instance['display_name'])['lpar_id']
         vhost = self._operator.get_vhost_by_instance_id(lpar_id)
-        self._operator.attach_disk_to_vhost(
-                        volume_name[0:15], vhost)
+        if driver_type == 'lvmpower':
+            self._operator.attach_disk_to_vhost(
+                            volume_name[0:15], vhost)
+        elif driver_type == 'iscsi':
+            self._disk_adapter.discovery_device(volume_data)
+            conn_info = self._get_volume_conn_info(volume_data)
+            dev_info = self.get_devname_by_conn_info(conn_info)
+            pvid = self._operator.get_hdisk_pvid(dev_info['device_name'])
+            if pvid == 'none':
+                self._operator.chdev_hdisk_pvid(dev_info['device_name'])
+            self._operator.attach_disk_to_vhost(dev_info['device_name'], vhost)
 
     def detach_volume(self, connection_info, instance):
+        driver_type = connection_info.get('driver_volume_type')
         volume_data = connection_info['data']
-        volume_name = volume_data['volume_name']
-        volume_info = {'device_name': volume_name[0:15]}
+        volume_name = 'volume-' + volume_data['volume_id']
+        if driver_type == 'iscsi':
+            self._disk_adapter.cancel_discovery_device(volume_name[0:15])
+            conn_info = self._get_volume_conn_info(volume_data)
+            volume_info = self.get_devname_by_conn_info(conn_info)
+        elif driver_type == 'lvmpower':
+            volume_info = {'device_name': volume_name[0:15]}
         self._disk_adapter.detach_volume_from_vhost(volume_info)
+
+    def change_iso(self, context, instance, iso_meta):
+        lpar_id = self._operator.get_lpar(
+            instance['display_name'])['lpar_id']
+        vhost = self._operator.get_vhost_by_instance_id(lpar_id)
+        if iso_meta:
+            image_id = iso_meta.get('id')
+            image_name = iso_meta.get('name')
+            self._disk_adapter.create_iso_from_isofile(context,
+                instance, image_name, image_id)
+            self._operator.attach_vopt_to_vhost(image_name, vhost)
+        else:
+            vtopt_names = self._operator.get_vtopt_name_by_vhost(vhost)
+            if vtopt_names:
+                self._operator.remove_vtd(vtopt_names[-1])
+
+    def list_phy_cdroms(self):
+        phy_cdroms = self._operator.list_phy_cdroms()
+        return phy_cdroms
+
+    def attach_phy_cdrom(self, instance, cdrom):
+        lpar_id = self._operator.get_lpar(
+            instance['display_name'])['lpar_id']
+        vhost = self._operator.get_vhost_by_instance_id(lpar_id)
+        self._operator.attach_disk_to_vhost(cdrom, vhost)
+
+    def detach_phy_cdrom(self, instance, cdrom):
+        lpar_id = self._operator.get_lpar(
+            instance['display_name'])['lpar_id']
+        vhost = self._operator.get_vhost_by_instance_id(lpar_id)
+        cdrom_mapping = self._operator.get_cdrom_mapping_by_vhost(vhost)
+        if cdrom in cdrom_mapping:
+            self._operator.remove_vtd(cdrom_mapping[cdrom])
 
 
 class BaseOperator(object):
@@ -898,7 +1056,45 @@ class BaseOperator(object):
 
             return disk_names
 
+        return [None]
+
+    def remove_vtd(self, vtopt):
+        cmd = self.command.rmvdev('-vtd %s' % vtopt)
+        self.run_vios_command(cmd)
+
+    def get_vtopt_name_by_vhost(self, vhost):
+        command = self.command.lsmap(
+                '-vadapter %s -type file_opt -field LUN vtd -fmt :' % vhost)
+        output = self.run_vios_command(command)
+        if output:
+            lun_to_vtd = {}
+            remaining_str = output[0].strip()
+            while remaining_str:
+                values = remaining_str.split(':', 2)
+                lun_to_vtd[values[0]] = values[1]
+                if len(values) > 2:
+                    remaining_str = values[2]
+                else:
+                    remaining_str = ''
+
+            lun_numbers = lun_to_vtd.keys()
+            lun_numbers.sort()
+
+            # assemble list of disknames ordered by lun number
+            vtopt_names = []
+            for lun_num in lun_numbers:
+                vtopt_names.append(lun_to_vtd[lun_num])
+
+            return vtopt_names
+
         return None
+
+    def get_cdrom_mapping_by_vhost(self, vhost):
+        cmd = self.command.lsmap(
+            '-vadapter %s -type optical -field backing vtd -fmt ,' % vhost)
+        output = self.run_vios_command(cmd)
+        cdrom_mapping = dict(item.split(',') for item in list(output))
+        return cdrom_mapping
 
     def attach_disk_to_vhost(self, disk, vhost):
         """Attach disk name to a specific vhost.
@@ -908,6 +1104,14 @@ class BaseOperator(object):
         """
         cmd = self.command.mkvdev('-vdev %s -vadapter %s') % (disk, vhost)
         self.run_vios_command(cmd)
+
+    def attach_vopt_to_vhost(self, iso_name, vhost):
+        # Create a vopt for vhost
+        cmd = self.command.mkvdev('-fbo -vadapter %s' % vhost)
+        vopt_info = self.run_vios_command(cmd)[0]
+        vopt = vopt_info.split()[0]
+        loadopt = ('ioscli loadopt -f -vtd %s -disk %s' % (vopt, iso_name))
+        self.run_vios_command(loadopt)
 
     def get_memory_info(self):
         """Get memory info.
@@ -1094,6 +1298,102 @@ class BaseOperator(object):
         cmd = ' '.join(['chsyscfg -r lpar -i',
                         '"name=%s,' % instance_name,
                         'virtual_eth_mac_base_value=%s"' % mac_base_value])
+        self.run_vios_command(cmd)
+
+    def get_lparname_by_lparid(self, lpar_id):
+        cmd = self.command.lssyscfg('-r lpar --filter "lpar_ids=%s" -F name'
+                                    % lpar_id)
+        lpar_name = self.run_vios_command(cmd)[0]
+        return lpar_name
+
+    def list_phy_cdroms(self):
+        cdroms_list = []
+        cmd = self.command.lsmap('-type optical -all -field '
+                                 'backing clientid -fmt ,')
+        output = self.run_vios_command(cmd)
+        used_cdroms = {}
+        for item in list(output):
+            item_list = item.split(',')
+            used_cdroms[item_list[1]] = item_list[0]
+
+        cmd = self.command.lsdev('-field name description physloc -fmt ,'
+                                 ' -type optical -state available')
+        cdroms = self.run_vios_command(cmd)
+        if cdroms:
+            for cdrom in cdroms:
+                cdrom_dict = {}
+                cdrom_info = cdrom.split(',')
+                cdrom_dict['host'] = self.get_hostname()
+                cdrom_dict['name'] = cdrom_info[0]
+                cdrom_dict['description'] = cdrom_info[1]
+                cdrom_dict['physloc'] = cdrom_info[2]
+                if cdrom_info[0] in used_cdroms:
+                    cdrom_dict['status'] = 'used'
+                    lparid = int(used_cdroms[cdrom_info[0]], 16)
+                    lpar_name = self.get_lparname_by_lparid(lparid)
+                    cdrom_dict['used_by'] = lpar_name
+                else:
+                    cdrom_dict['status'] = 'available'
+                    cdrom_dict['used_by'] = None
+                cdroms_list.append(cdrom_dict)
+        return cdroms_list
+
+    def get_all_hdisk(self):
+        disks = []
+        command = self.command.lsdev('-type disk -field name')
+        output = self.run_vios_command(command)
+        if output:
+            for o in output:
+                if o.startswith('hdisk'):
+                    disks.append(o)
+            return disks
+        return None
+
+    def get_hdisk_by_iqn(self, hdisks, iqn, lun='0x0'):
+        if iqn is None:
+            return None
+        if hdisks is None:
+            return None
+        attrs = ['target_name', 'port_num', 'lun_id', 'host_addr', 'pvid']
+        hdiskattr = {}
+        hdiskattrs = {}
+        hdisklist = []
+        for hdisk in hdisks:
+            cmd = self.command.lsdev('-dev %s -attr target_name' % hdisk)
+            try:
+                nameoutput = self.run_vios_command(cmd)
+            except Exception:
+                continue
+            cmd = self.command.lsdev('-dev %s -attr lun_id' % hdisk)
+            lunoutput = self.run_vios_command(cmd)
+            if nameoutput[2] == str(iqn) and lunoutput[2] == str(lun):
+                for attr in attrs:
+                    cmd = self.command.lsdev('-dev %s -attr %s' %
+                        (hdisk, attr))
+                    attroutput = self.run_vios_command(cmd)
+                    if attroutput is not None:
+                        hdiskattr[attr] = attroutput[2]
+                hdiskattrs['name'] = hdisk
+                hdiskattrs['attr'] = hdiskattr
+                hdisklist.append(hdiskattrs)
+        return hdisklist
+
+    def get_hdisk_pvid(self, hdisk):
+        if hdisk is None:
+            return None
+        cmd = self.command.lsdev('-dev %s -attr pvid' % hdisk)
+        output = self.run_vios_command(cmd)
+        if len(output) > 1:
+            return output[2]
+        return None
+
+    def chdev_hdisk_pvid(self, hdisk, pv=False):
+        if hdisk is None:
+            return None
+        if not pv:
+            cmd = ('ioscli chdev -dev %s -attr pv=yes' % hdisk)
+        else:
+            cmd = ('isocli chdev -dev %s -attr pv=no' % hdisk)
         self.run_vios_command(cmd)
 
 
@@ -1765,27 +2065,6 @@ class PowerHMCOperator(PowerVMOperator):
         if power_on:
             self._operator.start_lpar(lpar['name'], managed_system)
 
-    def _get_volume_conn_info(self, volume_data):
-        iqn = None
-        lun = None
-        conn_info = []
-        if not volume_data:
-            return None
-        try:
-            if 'target_iqn' in volume_data:
-                iqn = volume_data['target_iqn']
-            if 'target_lun' in volume_data:
-                lun = hex(volume_data['target_lun'])
-            if iqn and lun is not None:
-                conn_info.append((iqn, lun))
-            else:
-                return None
-
-        except Exception as e:
-            LOG.error(_("Failed to convert volume_data to conn: %s") % e)
-            return None
-        return conn_info
-
     def get_devname_by_conn_info(self, managed_system, vios_pid, conn_info):
         dev_info = {}
         disk = []
@@ -2196,7 +2475,7 @@ class HMCBaseOperator(BaseOperator):
 
             return disk_names
 
-        return None
+        return [None]
 
     def attach_disk_to_vhost(self, managed_system, vios_pid, disk, vhost):
         """Attach disk name to a specific vhost.

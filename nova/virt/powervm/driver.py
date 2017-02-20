@@ -19,6 +19,7 @@ from oslo_config import cfg
 from oslo_log import log as logging
 
 from nova.i18n import _LI
+from nova import image
 from nova.image import glance
 from nova.virt import driver
 from nova.virt.powervm import exception
@@ -74,6 +75,7 @@ class PowerVMDriver(driver.ComputeDriver):
     def __init__(self, virtapi):
         super(PowerVMDriver, self).__init__(virtapi)
         self._powervm = operator.PowerVMOperator()
+        self._image_api = image.API()
 
     def init_host(self, host):
         """Initialize anything that is necessary for the driver to function,
@@ -139,7 +141,7 @@ class PowerVMDriver(driver.ComputeDriver):
                 destroy_disks=True):
         """Destroy (shutdown and delete) the specified instance."""
         name = self.choose_instance_name(instance)
-        self._powervm.destroy(name, destroy_disks)
+        self._powervm.destroy(name, block_device_info, destroy_disks)
 
     def reboot(self, context, instance, network_info, reboot_type,
                block_device_info=None, bad_volumes_callback=None):
@@ -153,10 +155,6 @@ class PowerVMDriver(driver.ComputeDriver):
         :param bad_volumes_callback: Function to handle any bad volumes
             encountered
         """
-        if reboot_type == 'SOFT':
-            LOG.debug('Soft reboot is not supported for PowerVM.')
-            return
-
         self.power_off(instance)
         self.power_on(context, instance, network_info, block_device_info)
 
@@ -421,6 +419,32 @@ class PowerVMDriver(driver.ComputeDriver):
         return self._powervm.detach_volume(connection_info, instance)
 
     def clean_mem_hotplug(self, context, instance):
+        pass
+
+    def rename_instance(self, context, instance, update_dict):
+        self._powervm._operator.rename_lpar(instance['display_name'],
+                                            update_dict['display_name'])
+
+    def change_iso(self, context, instance, iso_id):
+        if iso_id:
+            iso_meta = self._image_api.get(context, iso_id)
+        else:
+            iso_meta = None
+        self._powervm.change_iso(context, instance, iso_meta)
+        instance.refresh()
+        instance.iso = iso_id
+        instance.save()
+
+    def list_phy_cdroms(self, context):
+        return self._powervm.list_phy_cdroms()
+
+    def attach_phy_cdrom(self, context, instance, cdrom):
+        self._powervm.attach_phy_cdrom(instance, cdrom)
+
+    def detach_phy_cdrom(self, context, instance, cdrom):
+        self._powervm.detach_phy_cdrom(instance, cdrom)
+
+    def get_usb_host_list(self, context):
         pass
 
 

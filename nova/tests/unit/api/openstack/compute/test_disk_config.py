@@ -320,6 +320,10 @@ class DiskConfigTestCaseV21(test.TestCase):
         self.assertDiskConfig(server_dict, 'MANUAL')
 
     def _test_update_server_disk_config(self, uuid, disk_config):
+        def rename_instance(*args, **kwargs):
+            pass
+
+        self.stubs.Set(compute_api.API, 'rename_instance', rename_instance)
         req = fakes.HTTPRequest.blank(
             '/fake/servers/%s' % uuid)
         req.method = 'PUT'
