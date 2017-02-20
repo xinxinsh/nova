@@ -60,6 +60,7 @@ class _TestInstanceObject(object):
         db_inst['deleted_at'] = None
         db_inst['created_at'] = None
         db_inst['updated_at'] = None
+        db_inst['iso'] = ""
         db_inst['launched_at'] = datetime.datetime(1955, 11, 12,
                                                    22, 4, 0)
         db_inst['deleted'] = False

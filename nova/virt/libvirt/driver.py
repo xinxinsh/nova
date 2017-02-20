@@ -5229,7 +5229,7 @@ class LibvirtDriver(driver.ComputeDriver):
         for config in storage_configs:
             guest.add_device(config)
 
-        #cdrom = self._get_guest_cdrom_device(instance, None, True)
+        # cdrom = self._get_guest_cdrom_device(instance, None, True)
         cdrom = self._get_guest_cdrom_config(context, instance, instance.iso)
         guest.add_device(cdrom)
 

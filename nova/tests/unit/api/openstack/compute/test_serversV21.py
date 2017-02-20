@@ -350,6 +350,7 @@ class ServersControllerTest(ControllerTest):
         return {
             "server": {
                 "id": uuid,
+                "iso": "",
                 "user_id": "fake_user",
                 "tenant_id": "fake_project",
                 "updated": "2010-11-11T11:00:00Z",
@@ -3566,6 +3567,7 @@ class ServersViewBuilderTest(test.TestCase):
         expected_server = {
             "server": {
                 "id": self.uuid,
+                "iso": "",
                 "user_id": "fake_user",
                 "tenant_id": "fake_project",
                 "updated": "2010-11-11T11:00:00Z",
@@ -3637,6 +3639,7 @@ class ServersViewBuilderTest(test.TestCase):
         expected_server = {
             "server": {
                 "id": self.uuid,
+                "iso": "",
                 "user_id": "fake_user",
                 "tenant_id": "fake_project",
                 "updated": "2010-11-11T11:00:00Z",
@@ -3794,6 +3797,7 @@ class ServersViewBuilderTest(test.TestCase):
         expected_server = {
             "server": {
                 "id": self.uuid,
+                "iso": "",
                 "user_id": "fake_user",
                 "tenant_id": "fake_project",
                 "updated": "2010-11-11T11:00:00Z",
@@ -3867,6 +3871,7 @@ class ServersViewBuilderTest(test.TestCase):
         expected_server = {
             "server": {
                 "id": self.uuid,
+                "iso": "",
                 "user_id": "fake_user",
                 "tenant_id": "fake_project",
                 "updated": "2010-11-11T11:00:00Z",

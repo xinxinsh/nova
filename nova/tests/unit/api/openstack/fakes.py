@@ -551,6 +551,7 @@ def stub_instance(id=1, user_id=None, project_id=None, host=None,
                   "flavor": flavorinfo,
               },
         "cleaned": cleaned,
+        "iso": "",
         "services": services}
 
     instance.update(info_cache)
