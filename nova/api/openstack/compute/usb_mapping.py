@@ -22,6 +22,7 @@ from nova.compute import vm_states
 from nova import db
 from nova import exception
 from nova.i18n import _
+from nova import servicegroup
 from oslo_log import log as logging
 import webob
 from webob import exc
@@ -37,6 +38,7 @@ class UsbMappingController(wsgi.Controller):
         super(UsbMappingController, self).__init__(*args, **kwargs)
         self.compute_api = compute.API()
         self.host_api = compute.HostAPI()
+        self.servicegroup_api = servicegroup.API()
 
     def _get_hosts(self, context):
         """Returns a list of hosts"""
@@ -47,7 +49,8 @@ class UsbMappingController(wsgi.Controller):
             services = self.host_api.service_get_all(context, filters)
 
             for s in services:
-                hosts.append(s['host'])
+                if self.servicegroup_api.service_is_up(s):
+                    hosts.append(s['host'])
         except exception.NotFound as e:
             raise exc.HTTPNotFound(explanation=e.format_message())
 
