@@ -35,6 +35,7 @@ import mmap
 import operator
 import os
 import shutil
+import socket
 import tempfile
 import time
 import uuid
@@ -57,8 +58,10 @@ from oslo_utils import timeutils
 from oslo_utils import units
 import six
 from six.moves import range
+from webob import exc
 
 from nova.api.metadata import base as instance_metadata
+from nova.api.openstack import common
 from nova import block_device
 from nova.compute import arch
 from nova.compute import cpumodel
@@ -3275,6 +3278,243 @@ class LibvirtDriver(driver.ComputeDriver):
     def poll_rebooting_instances(self, timeout, instances):
         pass
 
+    # add by suzhengwei@chinac.com
+    def _get_vm_socket_file(self, instance):
+        base_path = '/var/lib/libvirt/qemu/'
+        vm_socket_file = '%s.agent' % instance.uuid
+        return os.path.join(base_path, vm_socket_file)
+
+    def _get_vm_socket_lock(self, instance):
+        base_path = '/var/lib/libvirt/qemu/'
+        if not os.path.exists(base_path):
+            fileutils.ensure_tree(base_path)
+        vm_socket_lock = '%s.lock' % instance.uuid
+        return os.path.join(base_path, vm_socket_lock)
+
+    def _get_vm_stat_path(self, instance_name):
+        base_path = '/var/lib/libvirt/qemu/save/'
+        vm_stat_path = '%s.save' % instance_name
+        return os.path.join(base_path, vm_stat_path)
+
+    def _create_vm_sock_lock(self, instance):
+        sock_lock = self._get_vm_socket_lock(instance)
+        utils.execute('touch', sock_lock, run_as_root=True)
+
+    def _delete_vm_sock_lock(self, instance):
+        sock_lock = self._get_vm_socket_lock(instance)
+        utils.execute('rm', '-rf', sock_lock, run_as_root=True)
+
+    def _connect_vm_socket(self, instance):
+        path = self._get_vm_socket_file(instance)
+        libvirt_utils.chown(path, 'nova:nova')
+        sock = socket.socket(socket.AF_UNIX)
+        sock.settimeout(2)
+        try:
+            sock.connect(path)
+        except socket.error:
+            LOG.warn(_LW('Connect the socket failed.'),
+                instance=instance)
+        except Exception as e:
+            LOG.exception(_LE('Connect socket failed, Error=%s'), e,
+                instance=instance)
+        else:
+            return sock
+
+    def _close_vm_socket(self, sock, instance):
+        try:
+            sock.close()
+        except Exception as e:
+            LOG.exception(_LE('Close socket failed, Error=%s'), e,
+                instance=instance)
+
+    def _call_qemu_guest_agent(self, sock, message, instance):
+        if 'id' not in message['arguments']:
+            message['arguments']['id'] = str(uuid.uuid4())
+        id = message['arguments']['id']
+        msg_json = jsonutils.dumps(message)
+        try:
+            sock.sendall(msg_json)
+            LOG.debug('Send command: %s', msg_json, instance=instance)
+            ret = sock.recv(102400)
+            LOG.debug('Return info: %s', ret, instance=instance)
+        except socket.timeout:
+            LOG.warn(_LW('Socket timeout.'), instance=instance)
+        except Exception as e:
+            LOG.exception(_LE('Call socket failed, Error=%s'), e,
+                instance=instance)
+        else:
+            if id in ret and "Sucess" in ret:
+                return True
+            return False
+
+    def _create_vm_stat_xml(self, context, vm_stat_flavor, xml):
+        vm_stat_memory = (str(vm_stat_flavor.memory_mb * units.Ki)
+            .encode("utf-8"))
+        vm_stat_vcpu = str(vm_stat_flavor.vcpus).encode("utf-8")
+
+        tree = etree.fromstring(xml)
+        tree.find('memory').text = vm_stat_memory
+        tree.find('vcpu').set('current', vm_stat_vcpu)
+        tree.find('cpu/numa/cell').set('memory', vm_stat_memory)
+        return etree.tostring(tree)
+
+    def _create_vm_stat(self, context, instance, xml):
+        # If vm's image metadata not define vm_stat_ref, start from image
+        system_meta = instance.system_metadata
+        vm_stat_id = system_meta.get("image_vm_stat_ref", None)
+        if not vm_stat_id:
+            return False, xml
+        # If not define vm_stat_type or can't get it, start from image
+        try:
+            vm_stat_info = self._image_api.get(context, vm_stat_id)
+        except exception.ImageNotFound:
+            LOG.warn(_LW("vm_stat %(vm_stat_id)s doesn't exist anymore "
+                         "on image service"),
+                     {'vm_stat_id': vm_stat_id},
+                     instance=instance)
+            return False, xml
+
+        if not vm_stat_info:
+            return False, xml
+        vm_stat_type = vm_stat_info['properties'].get('vm_stat_type', None)
+        if not vm_stat_type:
+            return False, xml
+
+        try:
+            vm_stat_flavor = common.get_flavor(context, vm_stat_type)
+        except exc.HTTPNotFound:
+            LOG.warn(_LW("Can't get flavor %(vm_stat_type)s for "
+                         "vm_stat %(vm_stat_id)s"),
+                     {'vm_stat_type': vm_stat_type,
+                      'vm_stat_id': vm_stat_id},
+                     instance=instance)
+            return False, xml
+
+        # If vm not support cpu_hotplug/attch_mem, start from image
+        instance_flavor = instance.flavor
+        if ('cpu_max' not in instance_flavor.extra_specs.keys()) or (
+            'mem_max' not in instance_flavor.extra_specs.keys()):
+            return False, xml
+        # If hugepage/numa in flavor, start from image
+        if ('hw:mem_page_size' in instance_flavor.extra_specs.keys()) and (
+            instance_flavor.extra_specs.get('hw:mem_page_size') != '4'):
+            return False, xml
+        if 'hw:numa_nodes' in instance_flavor.extra_specs.keys():
+            return False, xml
+
+        base_dir = os.path.join(CONF.instances_path,
+                                CONF.image_cache_subdirectory_name)
+        if not os.path.exists(base_dir):
+            fileutils.ensure_tree(base_dir)
+        base = os.path.join(base_dir, vm_stat_id)
+        # download vm_stat to '/var/lib/nova/instances/_base/',
+        # if failed, start from image
+        if not os.path.exists(base):
+            try:
+                libvirt_utils.fetch_raw_image(context, base, vm_stat_id,
+                                              instance.user_id,
+                                              instance.project_id,
+                                              )
+            except exception.ImageNotFound:
+                LOG.warn(_LW("vm_stat %(vm_stat_id)s doesn't exist anymore "
+                             "on image service"),
+                         {'vm_stat_id': vm_stat_id},
+                         instance=instance)
+                return False, xml
+
+        # it will start from vm_stat,
+        # copy vm_stat to libvirt's folder
+        tree = etree.fromstring(xml)
+        instance_name = tree.findtext('name')
+        dest = self._get_vm_stat_path(instance_name)
+        utils.execute('cp', base, dest, run_as_root=True)
+        libvirt_utils.chown(dest, 'qemu:qemu')
+
+        # create xml of the vm_stat
+        return True, self._create_vm_stat_xml(context, vm_stat_flavor, xml)
+
+    def _reload_virtio_net(self, instance):
+        LOG.debug("call qga start:%s", timeutils.utcnow(), )
+        message = {"execute": "guest-terminal-cmd",
+          "arguments": {
+            "cmd": "modprobe -r virtio_net && modprobe virtio_net"}
+         }
+        sock = self._connect_vm_socket(instance)
+        ret = self._call_qemu_guest_agent(sock, message, instance)
+        if ret is not True:
+            LOG.warn(_LW('Reload virtio_net failed.'), instance=instance)
+            self._close_vm_socket(sock, instance)
+            return False
+
+        self._close_vm_socket(sock, instance)
+        LOG.debug("call qga end:%s", timeutils.utcnow(), instance=instance)
+        return True
+
+    def _update_ipaddr(self, instance):
+        # todo: support fot windows in futrue
+        if instance.os_type == "windows":
+            return True
+        else:
+            return self._reload_virtio_net(instance)
+
+    def _live_upgrade(self, context, instance, xml, vm_stat_xml,
+                      network_info, block_device_info):
+        """If instance create from vm_stat, it need hotplugin vcpu,
+           attach memory, configure ip address and so on.
+           One live-upgrade failed, hard reboot this instance.
+        """
+        old_tree = etree.fromstring(vm_stat_xml)
+        new_tree = etree.fromstring(xml)
+
+        def delete_vm_stat(instance_name):
+            path = self._get_vm_stat_path(instance_name)
+            if os.path.exists(path):
+                utils.execute('rm', '-rf', path, run_as_root=True)
+
+        tree = etree.fromstring(xml)
+        instance_name = tree.findtext('name')
+        # hotplugin vcpu to an instance
+        old_cpu_num = old_tree.find('vcpu').get('current')
+        new_cpu_num = new_tree.find('vcpu').get('current')
+        cpu_num = int(new_cpu_num) - int(old_cpu_num)
+        if cpu_num:
+            try:
+                self.cpu_hotplug(instance, cpu_num)
+            except exception.CpuHotplugFailed:
+                delete_vm_stat(instance_name)
+                self._hard_reboot(context, instance, network_info,
+                                  block_device_info)
+                return
+        # attach memory to an instance
+        old_memory_size = old_tree.findtext('memory')
+        new_memory_size = new_tree.findtext('memory')
+        memory_size = int(new_memory_size) - int(old_memory_size)
+        if memory_size:
+            try:
+                self.attach_mem(instance,
+                                image_meta=None,
+                                target_size=memory_size,
+                                target_node='0',
+                                source_pagesize=None,
+                                source_nodemask=None)
+            except exception.MemAttachFailed:
+                delete_vm_stat(instance_name)
+                self._hard_reboot(context, instance, network_info,
+                                  block_device_info)
+                return
+
+        # configure guest ip address
+        if not self._update_ipaddr(instance):
+            delete_vm_stat(instance_name)
+            self._hard_reboot(context, instance, network_info,
+                              block_device_info)
+            return
+
+        # if check vm_stat exists at last
+        path = self._get_vm_stat_path(instance_name)
+        if os.path.exists(path):
+            utils.execute('rm', '-rf', path, run_as_root=True)
+
     # NOTE(ilyaalekseyev): Implementation like in multinics
     # for xenapi(tr3buchet)
     def spawn(self, context, instance, image_meta, injected_files,
@@ -3294,8 +3534,12 @@ class LibvirtDriver(driver.ComputeDriver):
                                   disk_info, image_meta,
                                   block_device_info=block_device_info,
                                   write_to_disk=True)
-        self._create_domain_and_network(context, xml, instance, network_info,
-                                        disk_info,
+        _live_upgrade_flag, vm_stat_xml = self._create_vm_stat(context,
+                                                               instance,
+                                                               xml)
+        self._create_vm_sock_lock(instance)
+        self._create_domain_and_network(context, vm_stat_xml, instance,
+                                        network_info, disk_info,
                                         block_device_info=block_device_info)
         LOG.debug("Instance is running", instance=instance)
 
@@ -3304,12 +3548,18 @@ class LibvirtDriver(driver.ComputeDriver):
             state = self.get_info(instance).state
 
             if state == power_state.RUNNING:
+                # If vm start from vm_stat, it need live-upgrade
+                if _live_upgrade_flag:
+                    self._live_upgrade(context, instance, xml, vm_stat_xml,
+                                       network_info, block_device_info)
                 LOG.info(_LI("Instance spawned successfully."),
                          instance=instance)
                 raise loopingcall.LoopingCallDone()
 
         timer = loopingcall.FixedIntervalLoopingCall(_wait_for_boot)
         timer.start(interval=0.5).wait()
+
+        self._delete_vm_sock_lock(instance)
 
     def _flush_libvirt_console(self, pty):
         out, err = utils.execute('dd',

@@ -249,3 +249,6 @@ xend: CommandFilter, xend, root
 
 # nova/virt/libvirt/utils.py:
 touch: CommandFilter, touch, root
+
+# nova/virt/libvirt/utils.py:
+rm: CommandFilter, rm, root
