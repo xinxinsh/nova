@@ -1204,21 +1204,4 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
             msg = _('Instance:%s image_rollback error') % instance.uuid
             raise exception.NovaException(msg)
 
-        # update database
-        # 1. update instances and instance_system_metadata
-        instance.image_ref = image_meta['id']
-        instance.system_metadata.update({'image_base_image_ref':
-                                             image_meta['id']})
-        instance.save()
-
-        # 2. update block_device_mapping
-        bdms = objects.BlockDeviceMappingList.get_by_instance_uuid(
-            context, instance.uuid)
-        for bdm in bdms:
-            if bdm.no_device:
-                continue
-            if bdm.device_name == '/dev/vda':
-                bdm.image_id = image_meta['id']
-                bdm.save()
-
         LOG.info(_LI('Image_rollback sucessfully'), instance=instance)

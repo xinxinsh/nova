@@ -4359,7 +4359,25 @@ class API(base.Base):
                         break
         return False
 
+    def delete_system_disk_image(self, context):
+
+        LOG.debug('delete system disk image which has '
+                  'metadata system_disk_delete=True')
+        filters = {'property-system_disk_delete': True}
+        images = self.image_api.get_all(context, filters=filters,
+                                        sort_key='created_at',
+                                        sort_dir='desc')
+        if len(images) > 0:
+            for info in images:
+                LOG.debug("Deleting image %s", info['id'])
+                try:
+                    self.image_api.delete(context, info['id'])
+                except Exception:
+                    pass
+
     def delete_vm_snapshot(self, context, image_id):
+
+        self.delete_system_disk_image(context)
 
         image_service = glance.get_default_image_service()
         image_meta = image_service.show(context, image_id)
@@ -4370,11 +4388,6 @@ class API(base.Base):
 
             delete_error = False
             msg = ''
-
-            if self.check_snapshot_is_inuse(context, image_id,
-                                            image_meta):
-                msg = (_('the snapshot of id:%s is in-use') % image_id)
-                return msg
 
             if 'memory_snapshot_id' in image_meta['properties']:
                 try:
@@ -4457,10 +4470,19 @@ class API(base.Base):
                                                    image_system_id
                                     msg = msg + msg_snapshot
                             except Exception:
-                                msg_snapshot = _("delete system_disk_snapshot "
-                                                 "%s error! ") % \
-                                               image_system_id
-                                return msg_snapshot
+                                system_image_info = self.image_api.get(
+                                    context,
+                                    image_system_id)
+                                value = 'system_disk_delete'
+                                system_image_info['properties'][value] = True
+                                try:
+                                    self.image_api.update(context,
+                                                          image_system_id,
+                                                          system_image_info,
+                                                          data=None,
+                                                          purge_props=True)
+                                except Exception:
+                                    pass
                         else:
                             try:
                                 volume_snapshot = self.volume_api.get_snapshot(
@@ -4570,6 +4592,8 @@ class API(base.Base):
     @wrap_check_policy
     def image_rollback(self, context, instance, system_snapshot_id):
         """Create a new system disk from the given image and replace the old"""
+
+        self.delete_system_disk_image(context)
 
         image_service = glance.get_default_image_service()
         image_meta = image_service.show(context, system_snapshot_id)
