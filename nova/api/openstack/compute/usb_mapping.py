@@ -12,7 +12,7 @@
 #   License for the specific language governing permissions and limitations
 #   under the License.
 
-
+import eventlet
 from nova.api.openstack import common
 from nova.api.openstack import extensions
 from nova.api.openstack import wsgi
@@ -340,7 +340,8 @@ class UsbMappingController(wsgi.Controller):
         usb_pid = usb_mounted.get("usb_pid")
         if instance.host != src_host_name:
             usb = self._get_usb(context, src_host_name, usb_vid, usb_pid)
-            if usb and 'shared' not in usb.get('usb_host_status'):
+            if usb and 'shared' not in usb.get('usb_host_status') \
+                    and 'in use by' not in usb.get('usb_host_status'):
                 set_shared_dict = {
                     "usb_shared":
                         {
@@ -365,6 +366,8 @@ class UsbMappingController(wsgi.Controller):
                         }
                 }
                 self.usb_mapped(req, set_map_dict)
+            # wait for 3s
+            eventlet.sleep(3)
 
     def usb_mounted(self, req, body):
         """Mount the usb device to the local instance"""
@@ -420,10 +423,10 @@ class UsbMappingController(wsgi.Controller):
                                     dst_host_name, usb_vid, usb_pid)
 
         # set usb auto mapping if vm not in src_host
-        auto_mapping = usb_mounted.get("auto_mapping", False)
+        auto_mapping = usb_mounted.get("auto_map", True)
         if auto_mapping:
-                self._auto_mapping(req, context, instance, usb_mounted)
-
+            self._auto_mapping(req, context, instance, usb_mounted)
+            dst_host_name = instance.host
         self.compute_api.usb_mounted(context,
                                      instance,
                                      dst_host_name,
