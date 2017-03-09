@@ -435,8 +435,8 @@ class PowerVMDriver(driver.ComputeDriver):
         instance.iso = iso_id
         instance.save()
 
-    def list_phy_cdroms(self, context):
-        return self._powervm.list_phy_cdroms()
+    def list_phy_cdroms(self, context, instance):
+        return self._powervm.list_phy_cdroms(instance)
 
     def attach_phy_cdrom(self, context, instance, cdrom):
         self._powervm.attach_phy_cdrom(instance, cdrom)
@@ -452,6 +452,7 @@ class PowerHMCDriver(PowerVMDriver):
     def __init__(self, virtapi):
         driver.ComputeDriver.__init__(self, virtapi)
         self._powervm = operator.PowerHMCOperator()
+        self._image_api = image.API()
 
     def get_available_resource(self, nodename):
         """Retrieve resource info."""
@@ -604,3 +605,8 @@ class PowerHMCDriver(PowerVMDriver):
         if power_on:
             self._powervm._operator.start_lpar(instance['display_name'],
                                                instance['node'])
+
+    def rename_instance(self, context, instance, update_dict):
+        self._powervm._operator.rename_lpar(instance['display_name'],
+                                            instance['node'],
+                                            update_dict['display_name'])

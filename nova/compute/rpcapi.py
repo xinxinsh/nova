@@ -1215,10 +1215,10 @@ class ComputeAPI(object):
                           usb_vid=usb_vid,
                           usb_pid=usb_pid)
 
-    def list_phy_cdroms(self, ctxt, host):
+    def list_phy_cdroms(self, ctxt, host, instance):
         version = '4.6'
         cctxt = self.client.prepare(server=host, version=version)
-        return cctxt.call(ctxt, 'list_phy_cdroms')
+        return cctxt.call(ctxt, 'list_phy_cdroms', instance=instance)
 
     def attach_phy_cdrom(self, ctxt, instance, cdrom):
         version = '4.6'

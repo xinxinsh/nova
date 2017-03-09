@@ -72,12 +72,13 @@ class PhyCdromController(wsgi.Controller):
                 hosts = self._get_hosts(context)
                 for host in hosts:
                     cdrom_list = self.compute_api.list_phy_cdroms(context,
-                                                                  host)
+                                                                  host, None)
                     host_cdrom_list.extend(cdrom_list)
             else:
                 instance = self._get_instance(context, instance_id)
                 cdrom_list = self.compute_api.list_phy_cdroms(context,
-                                                              instance.host)
+                                                              instance.host,
+                                                              instance)
                 host_cdrom_list.extend(cdrom_list)
         except exception.NotFound as e:
             raise exc.HTTPNotFound(explanation=e.format_message())

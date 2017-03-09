@@ -7621,8 +7621,8 @@ class ComputeManager(manager.Manager):
         return self.driver.usb_status(context, instance, usb_vid, usb_pid)
 
     @wrap_exception()
-    def list_phy_cdroms(self, context):
-        return self.driver.list_phy_cdroms(context)
+    def list_phy_cdroms(self, context, instance):
+        return self.driver.list_phy_cdroms(context, instance)
 
     @wrap_exception()
     def attach_phy_cdrom(self, context, instance, cdrom):

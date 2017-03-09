@@ -4179,8 +4179,8 @@ class API(base.Base):
         return self.compute_rpcapi.usb_status(context, instance,
                                               host, usb_vid, usb_pid)
 
-    def list_phy_cdroms(self, context, host):
-        return self.compute_rpcapi.list_phy_cdroms(context, host)
+    def list_phy_cdroms(self, context, host, instance):
+        return self.compute_rpcapi.list_phy_cdroms(context, host, instance)
 
     def attach_phy_cdrom(self, context, instance, cdrom):
         return self.compute_rpcapi.attach_phy_cdrom(context, instance, cdrom)

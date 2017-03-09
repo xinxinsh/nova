@@ -20,6 +20,7 @@ import time
 import uuid
 
 from eventlet import timeout as eventlet_timeout
+from oslo_concurrency import lockutils
 from oslo_concurrency import processutils
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -169,7 +170,11 @@ class PowerVMOperator(object):
                     hex(slot_id)[2:]
                 mac = re.sub('(..)', r':\1', mac.lower())[1:]
             else:
-                mac = veth_adapter.split('/')[7]
+                is_lower = self._operator.check_power_version(hypervisor_name)
+                if is_lower:
+                    mac = 'null'
+                else:
+                    mac = veth_adapter.split('/')[7]
         else:
             mac = 'null'
         network_info = (
@@ -823,7 +828,7 @@ class PowerVMOperator(object):
             if vtopt_names:
                 self._operator.remove_vtd(vtopt_names[-1])
 
-    def list_phy_cdroms(self):
+    def list_phy_cdroms(self, instance):
         phy_cdroms = self._operator.list_phy_cdroms()
         return phy_cdroms
 
@@ -1673,6 +1678,7 @@ class PowerHMCOperator(PowerVMOperator):
         # MAC address for the mac_base_value parameter and then
         # get the integer value of the final 2 characters as the
         # slot_id parameter
+        is_lower = self._operator.check_power_version(instance['node'])
         virtual_eth_adapters = ""
         for vif in network_info:
             mac = vif['address']
@@ -1685,18 +1691,28 @@ class PowerHMCOperator(PowerVMOperator):
                 eth_id = self._operator.get_virtual_eth_adapter_id(instance)
             vswitch = self._operator.get_vswitch_by_vlanid(instance, eth_id)
             if not vswitch:
-                vswitch = ""
-            if virtual_eth_adapters:
-                virtual_eth_adapters = ('\\"%(virtual_eth_adapters)s, \
-                    %(slot_id)s/0/%(eth_id)s//0/0/%(vs)s/%(mac_addr)s//\\"' %
-                    {'virtual_eth_adapters': virtual_eth_adapters,
-                     'slot_id': slot_id, 'eth_id': eth_id,
-                     'vs': vswitch, 'mac_addr': mac_addr})
+                vswitch = ''
+            if is_lower:
+                if virtual_eth_adapters:
+                    virtual_eth_adapters = ('\\"%(virtual_eth_adapters)s, \
+                                %(slot_id)s/0/%(eth_id)s//0/0\\"' %
+                                {'virtual_eth_adapters': virtual_eth_adapters,
+                                'slot_id': slot_id, 'eth_id': eth_id})
+                else:
+                    virtual_eth_adapters = ('%(slot_id)s/0/%(eth_id)s//0/0' %
+                                {'slot_id': slot_id, 'eth_id': eth_id})
             else:
-                virtual_eth_adapters = (
-                    '%(slot_id)s/0/%(eth_id)s//0/0/%(vs)s/%(mac_addr)s//' %
-                    {'slot_id': slot_id, 'eth_id': eth_id,
-                     'vs': vswitch, 'mac_addr': mac_addr})
+                if virtual_eth_adapters:
+                    virtual_eth_adapters = ('\\"%(virtual_eth_adapters)s, \
+                        %(slotid)s/0/%(eth_id)s//0/0/%(vs)s/%(mac_add)s//\\"' %
+                        {'virtual_eth_adapters': virtual_eth_adapters,
+                         'slotid': slot_id, 'eth_id': eth_id,
+                         'vs': vswitch, 'mac_add': mac_addr})
+                else:
+                    virtual_eth_adapters = (
+                        '%(slot_id)s/0/%(eth_id)s//0/0/%(vs)s/%(mac_addr)s//' %
+                        {'slot_id': slot_id, 'eth_id': eth_id,
+                         'vs': vswitch, 'mac_addr': mac_addr})
         # LPAR configuration data
         # max_virtual_slots is hardcoded to 64 since we generate a MAC
         # address that must be placed in slots 32 - 64
@@ -1712,7 +1728,6 @@ class PowerHMCOperator(PowerVMOperator):
                         max_proc_units=cpus_max,
                         max_virtual_slots=64,
                         profile_name=inst_name,
-                        suspend_capable=1,
                         virtual_eth_adapters=virtual_eth_adapters)
         return lpar_inst
 
@@ -1724,9 +1739,16 @@ class PowerHMCOperator(PowerVMOperator):
 
     def spawn(self, context, instance, image_meta,
               network_info, block_device_info):
-        def _create_image(context, instance, image_id, block_device_info):
+        def _create_image(context, instance, image_meta, block_device_info):
             """Fetch image from glance and copy it to the remote system."""
             try:
+                if hasattr(image_meta, 'id'):
+                    image_id = image_meta.id
+                    image_name = image_meta.name
+                    if image_meta.disk_format == 'iso':
+                        is_iso = True
+                    else:
+                        is_iso = False
                 managed_system = instance['node']
                 vios_pid = self._operator.get_vios_lpar_id(managed_system)
                 disk_adapter = self._get_disk_adapter(managed_system)
@@ -1739,11 +1761,23 @@ class PowerHMCOperator(PowerVMOperator):
                     block_device_mapping = \
                         block_device_info.get('block_device_mapping') or []
                 if image_id:
-                    root_volume = disk_adapter.create_volume_from_image(
-                        context, instance, image_id)
-                    disk_adapter.attach_volume_to_host(root_volume)
-                    self._operator.attach_disk_to_vhost(managed_system,
-                        vios_pid, root_volume['device_name'], vhost)
+                    if is_iso:
+                        size_gb = max(instance.root_gb,
+                            constants.POWERVM_MIN_ROOT_GB)
+                        size = size_gb * 1024 * 1024 * 1024
+                        disk_name = disk_adapter.create_volume(size)
+                        disk_adapter.create_iso_from_isofile(context,
+                            instance, image_name, image_id)
+                        self._operator.attach_vopt_to_vhost(managed_system,
+                            vios_pid, image_name, vhost)
+                        self._operator.attach_disk_to_vhost(managed_system,
+                            vios_pid, disk_name, vhost)
+                    else:
+                        root_volume = disk_adapter.create_volume_from_image(
+                            context, instance, image_id)
+                        disk_adapter.attach_volume_to_host(root_volume)
+                        self._operator.attach_disk_to_vhost(managed_system,
+                            vios_pid, root_volume['device_name'], vhost)
                 if block_device_mapping:
                     for disk in block_device_mapping:
                         driver_volume_type = \
@@ -1776,10 +1810,6 @@ class PowerHMCOperator(PowerVMOperator):
                 raise exception.PowerVMImageCreationFailed()
 
         spawn_start = time.time()
-        if hasattr(image_meta, 'id'):
-            image_id = image_meta.id
-        else:
-            image_id = None
 
         try:
             try:
@@ -1808,7 +1838,7 @@ class PowerHMCOperator(PowerVMOperator):
                 raise exception.PowerVMLPARCreationFailed(
                     instance_name=instance['display_name'])
 
-            _create_image(context, instance, image_id, block_device_info)
+            _create_image(context, instance, image_meta, block_device_info)
             LOG.debug("Activating the LPAR instance '%s'"
                       % instance['display_name'])
             self._operator.start_lpar(instance['display_name'], managed_system)
@@ -1874,8 +1904,11 @@ class PowerHMCOperator(PowerVMOperator):
                                                             managed_system,
                                                             vios_pid,
                                                             vhost)[0]
+                vtopt_names = self._operator.get_vtopt_name_by_vhost(
+                    managed_system, vios_pid, vhost)
             else:
                 disk_name = None
+                vtopt_names = None
 
             LOG.debug("Shutting down the instance '%s'" % instance_name)
             if lpar_state != 'Not Activated':
@@ -1903,6 +1936,12 @@ class PowerHMCOperator(PowerVMOperator):
                     volume_names.append(volume_info['device_name'])
                     disk_adapter.detach_volume_from_vhost(volume_info)
 
+            if vtopt_names:
+                for vtopt in vtopt_names:
+                    if vtopt != '':
+                        self._operator.remove_vtd(managed_system,
+                                                  vios_pid, vtopt)
+
             if disk_name and disk_name not in volume_names and destroy_disks:
                 # TODO(mrodden): we should also detach from the instance
                 # before we start deleting things...
@@ -1911,7 +1950,7 @@ class PowerHMCOperator(PowerVMOperator):
                 # volume is detached from host so that it can be deleted
                 disk_adapter.detach_volume_from_host(volume_info)
                 disk_adapter.delete_volume(volume_info)
-            if destroy_disks:
+            if destroy_disks and vhost:
                 self._operator.remove_vscsi_server(instance_name,
                      managed_system, vios_pid, vhost)
 
@@ -2140,6 +2179,57 @@ class PowerHMCOperator(PowerVMOperator):
             volume_info = {'device_name': volume_name[0:15]}
         disk_adapter.detach_volume_from_vhost(volume_info)
 
+    def change_iso(self, context, instance, iso_meta):
+        managed_system = instance['node']
+        disk_adapter = self._get_disk_adapter(managed_system)
+        vios_pid = self._operator.get_vios_lpar_id(managed_system)
+        lpar_id = self._operator.get_lpar(instance['display_name'],
+                                          managed_system)['lpar_id']
+        vhost = self._operator.get_vhost_by_instance_id(managed_system,
+                                                        vios_pid, lpar_id)
+        if iso_meta:
+            image_id = iso_meta.get('id')
+            image_name = iso_meta.get('name')
+            disk_adapter.create_iso_from_isofile(context,
+                instance, image_name, image_id)
+            self._operator.attach_vopt_to_vhost(managed_system, vios_pid,
+                                                image_name, vhost)
+        else:
+            vtopt_names = self._operator.get_vtopt_name_by_vhost(
+                managed_system, vios_pid, vhost)
+            if vtopt_names:
+                self._operator.remove_vtd(managed_system, vios_pid,
+                                          vtopt_names[-1])
+
+    def list_phy_cdroms(self, instance):
+        managed_system = instance['node']
+        vios_pid = self._operator.get_vios_lpar_id(managed_system)
+        phy_cdroms = self._operator.list_phy_cdroms(managed_system, vios_pid)
+        return phy_cdroms
+
+    def attach_phy_cdrom(self, instance, cdrom):
+        managed_system = instance['node']
+        vios_pid = self._operator.get_vios_lpar_id(managed_system)
+        lpar_id = self._operator.get_lpar(instance['display_name'],
+                                          managed_system)['lpar_id']
+        vhost = self._operator.get_vhost_by_instance_id(managed_system,
+                                                        vios_pid, lpar_id)
+        self._operator.attach_disk_to_vhost(managed_system, vios_pid,
+                                            cdrom, vhost)
+
+    def detach_phy_cdrom(self, instance, cdrom):
+        managed_system = instance['node']
+        vios_pid = self._operator.get_vios_lpar_id(managed_system)
+        lpar_id = self._operator.get_lpar(instance['display_name'],
+                                          managed_system)['lpar_id']
+        vhost = self._operator.get_vhost_by_instance_id(managed_system,
+                                                        vios_pid, lpar_id)
+        cdrom_mapping = self._operator.get_cdrom_mapping_by_vhost(
+            managed_system, vios_pid, vhost)
+        if cdrom in cdrom_mapping:
+            self._operator.remove_vtd(managed_system, vios_pid,
+                                      cdrom_mapping[cdrom])
+
 
 class HMCBaseOperator(BaseOperator):
     """Base operator for IVM and HMC managed systems."""
@@ -2241,20 +2331,10 @@ class HMCBaseOperator(BaseOperator):
         avail_slot = None
         min_virt_slot = self._get_min_virt_slot(managed_system)
         max_virt_slot = self._get_max_virt_slot(managed_system, vios_lpar_id)
-        # for slot in range(min_virt_slot, max_virt_slot + 1):
-        begin = time.time()
-        time_passed = 0
-        time_out = 120
-        while time_passed < time_out:
-            now = time.time()
-            time_passed = now - begin
-            slot = random.randint(min_virt_slot, max_virt_slot + 1)
+        for slot in range(min_virt_slot, max_virt_slot + 1):
             if slot not in slots_in_use:
                 avail_slot = slot
                 break
-            else:
-                time.sleep(3)
-                continue
         return avail_slot
 
     def list_vios_virt_slots(self, managed_system, vios_lpar_id):
@@ -2272,6 +2352,7 @@ class HMCBaseOperator(BaseOperator):
             (managed_system, vios_lpar_id, slot_num, lpar_id))
         self.run_hmc_command(cmd)
 
+    @lockutils.synchronized('create_lpar', external=True)
     def create_lpar(self, lpar, managed_system):
         """Receives a LPAR data object and creates a LPAR instance.
 
@@ -2340,11 +2421,13 @@ class HMCBaseOperator(BaseOperator):
         lpar = self.get_lpar(instance_name, managed_system)
         virtual_scsi_adapters = \
             lpar.__getitem__('virtual_scsi_adapters')
-        vscsi_client_adapter, = virtual_scsi_adapters.split(',')
-        # Example: 2/client/2/vio-name/13/1. We want the remote slot
-        # id which is '13'.
-        slot_num = vscsi_client_adapter.split('/')[4]
-        return slot_num
+        if virtual_scsi_adapters != 'none':
+            vscsi_client_adapter, = virtual_scsi_adapters.split(',')
+            # Example: 2/client/2/vio-name/13/1. We want the remote slot
+            # id which is '13'.
+            slot_num = vscsi_client_adapter.split('/')[4]
+            return slot_num
+        return None
 
     def _remove_virtual_terminal(self, instance_name, managed_system):
         cmd = 'rmvterm -m %s -p %s' % (managed_system, instance_name)
@@ -2477,6 +2560,41 @@ class HMCBaseOperator(BaseOperator):
 
         return [None]
 
+    def remove_vtd(self, managed_system, vios_pid, vtopt):
+        if vtopt and vtopt != '':
+            cmd = self.command.viosvrcmd('-m %s --id %s -c '
+                '\'rmvdev -vtd %s\'' %
+                (managed_system, vios_pid, vtopt))
+            self.run_hmc_command(cmd)
+
+    def get_vtopt_name_by_vhost(self, managed_system, vios_pid, vhost):
+        command = self.command.viosvrcmd('-m %s --id %s -c \'lsmap '
+            '-vadapter %s -type file_opt -field LUN vtd -fmt :\'' %
+            (managed_system, vios_pid, vhost))
+        output = self.run_vios_command(command)
+        if output:
+            lun_to_vtd = {}
+            remaining_str = output[0].strip()
+            while remaining_str:
+                values = remaining_str.split(':', 2)
+                lun_to_vtd[values[0]] = values[1]
+                if len(values) > 2:
+                    remaining_str = values[2]
+                else:
+                    remaining_str = ''
+
+            lun_numbers = lun_to_vtd.keys()
+            lun_numbers.sort()
+
+            # assemble list of disknames ordered by lun number
+            vtopt_names = []
+            for lun_num in lun_numbers:
+                vtopt_names.append(lun_to_vtd[lun_num])
+
+            return vtopt_names
+
+        return None
+
     def attach_disk_to_vhost(self, managed_system, vios_pid, disk, vhost):
         """Attach disk name to a specific vhost.
 
@@ -2487,6 +2605,18 @@ class HMCBaseOperator(BaseOperator):
             '\'mkvdev -vdev %s -vadapter %s\'' %
             (managed_system, vios_pid, disk, vhost))
         self.run_hmc_command(cmd)
+
+    def attach_vopt_to_vhost(self, managed_system, vios_pid, iso_name, vhost):
+        # Create a vopt for vhost
+        cmd = self.command.viosvrcmd('-m %s --id %s -c '
+            '\'mkvdev -fbo -vadapter %s\'' %
+            (managed_system, vios_pid, vhost))
+        vopt_info = self.run_hmc_command(cmd)[0]
+        vopt = vopt_info.split()[0]
+        loadopt = self.command.viosvrcmd('-m %s --id %s -c '
+            '\'loadopt -f -vtd %s -disk %s\'' %
+            (managed_system, vios_pid, vopt, iso_name))
+        self.run_hmc_command(loadopt)
 
     def get_hostname(self, managed_system, vios_lpar_id):
         """Returns the managed system hostname.
@@ -2695,6 +2825,66 @@ class HMCBaseOperator(BaseOperator):
                 ' \'chdev -dev %s -attr pv=no\'' %
                 (managed_system, vios_pid, hdisk))
         self.run_hmc_command(cmd)
+
+    def check_power_version(self, managed_system):
+        lower_versions = ['POWER5', 'POWER6']
+        cmd = self.command.lssyscfg('-m %s -r sys'
+            ' -F lpar_proc_compat_modes' % managed_system)
+        version = self.run_hmc_command(cmd)[0]
+        for lower_version in lower_versions:
+            if lower_version in version:
+                return True
+        return False
+
+    def get_lparname_by_lparid(self, managed_system, lpar_id):
+        cmd = self.command.lssyscfg('-m %s -r lpar '
+                                    '--filter "lpar_ids=%s" -F name' %
+                                    (managed_system, lpar_id))
+        lpar_name = self.run_hmc_command(cmd)[0]
+        return lpar_name
+
+    def list_phy_cdroms(self, managed_system, vios_pid):
+        cdroms_list = []
+        cmd = self.command.viosvrcmd('-m %s --id %s -c'
+            ' \'lsmap -type optical -all '
+            '-field backing clientid -fmt :\'' % (managed_system, vios_pid))
+        output = self.run_hmc_command(cmd)
+        used_cdroms = {}
+        for item in list(output):
+            item_list = item.split(':')
+            used_cdroms[item_list[1]] = item_list[0]
+
+        cmd = self.command.viosvrcmd('-m %s --id %s -c'
+            ' \'lsdev -field name description physloc -fmt ,'
+            ' -type optical -state available\'' % (managed_system, vios_pid))
+        cdroms = self.run_hmc_command(cmd)
+        if cdroms:
+            for cdrom in cdroms:
+                cdrom_dict = {}
+                cdrom_info = cdrom.split(',')
+                cdrom_dict['host'] = managed_system
+                cdrom_dict['name'] = cdrom_info[0]
+                cdrom_dict['description'] = cdrom_info[1]
+                cdrom_dict['physloc'] = cdrom_info[2]
+                if cdrom_info[0] in used_cdroms:
+                    cdrom_dict['status'] = 'used'
+                    lparid = int(used_cdroms[cdrom_info[0]], 16)
+                    lpar_name = self.get_lparname_by_lparid(managed_system,
+                                                            lparid)
+                    cdrom_dict['used_by'] = lpar_name
+                else:
+                    cdrom_dict['status'] = 'available'
+                    cdrom_dict['used_by'] = None
+                cdroms_list.append(cdrom_dict)
+        return cdroms_list
+
+    def get_cdrom_mapping_by_vhost(self, managed_system, vios_pid, vhost):
+        cmd = self.command.viosvrcmd('-m %s --id %s -c'
+            ' \'lsmap -vadapter %s -type optical '
+            '-field backing vtd -fmt ,\'' % (managed_system, vios_pid, vhost))
+        output = self.run_hmc_command(cmd)
+        cdrom_mapping = dict(item.split(',') for item in list(output))
+        return cdrom_mapping
 
 
 class HMCOperator(HMCBaseOperator):
