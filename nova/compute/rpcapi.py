@@ -1291,6 +1291,14 @@ class ComputeAPI(object):
                           volume_mapping=volume_mapping,
                           vm_active=vm_active)
 
+    def update_snapshot_info(self, ctxt, instance, image_id):
+        version = '4.6'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                                    version=version)
+        return cctxt.cast(ctxt, 'update_snapshot_info',
+                          instance=instance,
+                          image_id=image_id)
+
     def create_system_and_memory_snapshot(self, ctxt, instance,
                                           system_image_id,
                                           memory_image_meta,

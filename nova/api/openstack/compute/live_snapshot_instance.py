@@ -131,7 +131,11 @@ class LiveSnapshotInstanceController(wsgi.Controller):
                                                 "manual")
 
         # create system snapshot
-        system_snapshot = live_snapshot.get("system_snapshot", "True")
+        system_snapshot = live_snapshot.get("system_snapshot", True)
+        if system_snapshot:
+            system_snapshot = "True"
+        else:
+            system_snapshot = "False"
 
         # volume snapshot list
         volume_snapshot_list = live_snapshot.get("volume_snapshot_list", [])
@@ -195,9 +199,13 @@ class LiveSnapshotInstanceController(wsgi.Controller):
         snapshot = {}
         snapshot['snapshot_id'] = image['id']
         snapshot['snapshot_name'] = image['name']
+        snapshot['snapshot_actual_status'] = \
+            image['properties']['snapshot_actual_status']
         snapshot['snapshot_info'] = self.compute_api.get_snapshot_info(
             context,
             image['id'])
+
+        self.compute_api.update_snapshot_info(context, instance, image['id'])
 
         return {'snapshot': snapshot}
 

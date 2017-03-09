@@ -2715,6 +2715,7 @@ class API(base.Base):
 
         image_meta['properties']['image_type'] = 'snapshot_for_instance'
         image_meta['properties']['instance_uuid'] = instance['uuid']
+        image_meta['properties']['snapshot_actual_status'] = 'saving'
 
         image_for_instance_info = self.image_api.create(context, image_meta)
 
@@ -4305,6 +4306,9 @@ class API(base.Base):
                 snapshot_info['memory_snapshot']['status'] = meta['status']
 
         return snapshot_info
+
+    def update_snapshot_info(self, context, instance, image_id):
+        self.compute_rpcapi.update_snapshot_info(context, instance, image_id)
 
     def check_snapshot_is_inuse(self, context, image_id, image_meta):
 

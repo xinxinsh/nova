@@ -7707,6 +7707,59 @@ class ComputeManager(manager.Manager):
                                     volume_mapping, vm_active)
 
     @wrap_exception()
+    def update_snapshot_info(self, context, instance, image_id):
+
+        image_meta = self.image_api.get(context, image_id)
+
+        check_image_id = None
+        flag = 1
+
+        if 'memory_snapshot_id' in image_meta['properties']:
+            check_image_id = \
+                image_meta['properties']['memory_snapshot_id']
+        if 'system_snapshot_id' in image_meta['properties']:
+            check_image_id = \
+                image_meta['properties']['system_snapshot_id']
+
+        if check_image_id:
+            # Wait for check_image to become ready, 20min
+            starttime = time.time()
+            deadline = starttime + 1200
+
+            check_image = self.image_api.get(context, check_image_id)
+
+            tries = 0
+            while check_image['status'] != 'active':
+                tries = tries + 1
+                now = time.time()
+                if now > deadline:
+                    flag = 0
+                    break
+                else:
+                    time.sleep(tries ** 2)
+                check_image = self.image_api.get(context,
+                                                 check_image_id)
+
+        image_meta = self.image_api.get(context, image_id)
+        if flag == 0:
+            image_meta['properties']['snapshot_actual_status'] = 'error'
+        else:
+            image_meta['properties']['snapshot_actual_status'] = 'active'
+
+        if not image_meta['disk_format']:
+            image_meta['disk_format'] = 'raw'
+        if not image_meta['container_format']:
+            image_meta['container_format'] = 'bare'
+        try:
+            self.image_api.update(context,
+                                  image_id,
+                                  image_meta,
+                                  data=None,
+                                  purge_props=True)
+        except Exception:
+            pass
+
+    @wrap_exception()
     @reverts_task_state
     def rollback_to_memory_snapshot(self, context, instance, image_meta):
         instance.task_state = task_states.ROLLING_MEMORY_BACK
