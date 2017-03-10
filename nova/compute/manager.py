@@ -7728,15 +7728,13 @@ class ComputeManager(manager.Manager):
 
             check_image = self.image_api.get(context, check_image_id)
 
-            tries = 0
             while check_image['status'] != 'active':
-                tries = tries + 1
                 now = time.time()
                 if now > deadline:
                     flag = 0
                     break
                 else:
-                    time.sleep(tries ** 2)
+                    time.sleep(2)
                 check_image = self.image_api.get(context,
                                                  check_image_id)
 
@@ -7756,8 +7754,8 @@ class ComputeManager(manager.Manager):
                                   image_meta,
                                   data=None,
                                   purge_props=True)
-        except Exception:
-            pass
+        except exception.ImageNotAuthorized as e:
+            LOG.error(_LE('Update image: %s'), e)
 
     @wrap_exception()
     @reverts_task_state

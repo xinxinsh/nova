@@ -4398,7 +4398,8 @@ class API(base.Base):
                     image_memory = image_service.show(
                         context,
                         image_meta['properties']['memory_snapshot_id'])
-                    if image_memory['status'] in ['active', 'queued']:
+                    if image_memory['status'] in ['active', 'queued',
+                                                  'saving']:
                         image_service.delete(
                             context,
                             image_meta['properties']['memory_snapshot_id'])
@@ -4462,7 +4463,8 @@ class API(base.Base):
                                     context,
                                     image_system_id)
                                 if image_system['status'] in ['active',
-                                                              'queued']:
+                                                              'queued',
+                                                              'saving']:
                                     image_service.delete(
                                         context,
                                         image_system_id)
@@ -4485,8 +4487,8 @@ class API(base.Base):
                                                           system_image_info,
                                                           data=None,
                                                           purge_props=True)
-                                except Exception:
-                                    pass
+                                except exception.ImageNotAuthorized as e:
+                                    LOG.error(_LE('Update image: %s'), e)
                         else:
                             try:
                                 volume_snapshot = self.volume_api.get_snapshot(
