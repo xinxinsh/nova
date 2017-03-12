@@ -371,14 +371,24 @@ class API(object):
 
     def check_attach(self, context, volume, instance=None):
         # TODO(vish): abstract status checking?
-        if volume['status'] != "available":
-            msg = _("volume '%(vol)s' status must be 'available'. Currently "
-                    "in '%(status)s'") % {'vol': volume['id'],
-                                          'status': volume['status']}
-            raise exception.InvalidVolume(reason=msg)
-        if volume['attach_status'] == "attached":
-            msg = _("volume %s already attached") % volume['id']
-            raise exception.InvalidVolume(reason=msg)
+        # Cinder supports multi-attach when a volume
+        # has been marked as multiattach
+        if 'multiattach' in volume and volume['multiattach']:
+            if (volume['status'] not in ["available", "in-use"]):
+                msg = _("multiattach voume's status must be "
+                        "'available' or 'in-use'")
+                raise exception.InvalidVolume(reason=msg)
+        else:
+            if volume['status'] != "available":
+                msg = _("volume '%(vol)s' status must be 'available'."
+                        " Currently in '%(status)s ") % {
+                            'vol': volume['id'],
+                            'status': volume['status']}
+                raise exception.InvalidVolume(reason=msg)
+            if volume['attach_status'] == "attached":
+                msg = _("volume %s already attached") % volume['id']
+                raise exception.InvalidVolume(reason=msg)
+
         if instance and not CONF.cinder.cross_az_attach:
             instance_az = az.get_instance_availability_zone(context, instance)
             if instance_az != volume['availability_zone']:
