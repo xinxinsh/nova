@@ -574,6 +574,8 @@ class ServersController(wsgi.Controller):
 
         availability_zone = create_kwargs.pop("availability_zone", None)
 
+        metadata = server_dict.get('metadata', {})
+        context.project_id = metadata.get('project_id', context.project_id)
         target = {
             'project_id': context.project_id,
             'user_id': context.user_id,
