@@ -642,3 +642,20 @@ class PowerVMLocalVolumeAdapter(PowerVMDiskAdapter):
                       {'command': command, 'error_text': error_text})
 
         return stdout.read().splitlines()
+
+    def get_disk_config_path(self, instance_id):
+        config_path = os.path.join(CONF.powervm.powervm_img_local_path,
+                                   instance_id + '.disk.config')
+        return config_path
+
+    def copy_cd_for_instance(self, config_path):
+        remote_path = CONF.powervm.powervm_img_remote_path
+        remote_file_name, size = self._copy_image_file(config_path,
+                                                       remote_path)
+        return remote_file_name
+
+    def create_cd_opt(self, cd_iso_name, remote_file_name):
+        self.run_vios_command("ioscli mkvopt -name %s -file %s -ro" %
+                              (cd_iso_name, remote_file_name))
+        cleanup_cmd = 'rm %s' % remote_file_name
+        self.run_vios_command_as_root(cleanup_cmd)
