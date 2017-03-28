@@ -336,39 +336,54 @@ class UsbMappingController(wsgi.Controller):
 
     def _usb_auto_mapping(self, req, context, instance, usb_mounted):
         src_host_name = usb_mounted.get("src_host_name")
-        dis_host_name = instance.host
         usb_vid = usb_mounted.get("usb_vid")
         usb_pid = usb_mounted.get("usb_pid")
-        if instance.host != src_host_name:
-            usb = self._get_usb(context, src_host_name, usb_vid, usb_pid)
-            if usb and 'shared' not in usb.get('usb_host_status') \
-                    and 'in use by' not in usb.get('usb_host_status'):
-                set_shared_dict = {
-                    "usb_shared":
-                        {
-                            "host_name": src_host_name,
-                            "usb_vid": usb_vid,
-                            "usb_pid": usb_pid,
-                            "usb_port": usb.get('usb_port'),
-                            "shared": "True"
-                        }
-                }
-                self.usb_shared(req, set_shared_dict)
-            if usb and dis_host_name not in usb.get('usb_host_status'):
-                set_map_dict = {
-                    "usb_mapped":
-                        {
-                            "src_host_name": src_host_name,
-                            "dst_host_name": dis_host_name,
-                            "usb_vid": usb_vid,
-                            "usb_pid": usb_pid,
-                            "usb_port": usb.get('usb_port'),
-                            "mapped": "True"
-                        }
-                }
-                self.usb_mapped(req, set_map_dict)
-            # wait for 3s
-            eventlet.sleep(3)
+
+        usb = self._get_usb(context, src_host_name, usb_vid, usb_pid)
+        if usb and 'in use by' not in usb.get('usb_host_status'):
+            dst_host_name = src_host_name
+        else:
+            dst_host_name = usb['usb_host_status'].split('in use by ')[1]
+
+        usb_port = usb.get('usb_port')
+
+        if dst_host_name == instance.host:
+            pass
+        else:
+            if dst_host_name != instance.host \
+                    and dst_host_name != src_host_name:
+                self.compute_api.usb_mapped(
+                    context,
+                    src_host_name,
+                    dst_host_name,
+                    usb_vid,
+                    usb_pid,
+                    usb_port,
+                    "False")
+                eventlet.sleep(2)
+
+            # check the USB status in real time
+            usb_info = self._get_usb(context, src_host_name, usb_vid, usb_pid)
+            if usb_info['usb_host_status'] \
+                    == 'plugged':
+                self.compute_api.usb_shared(
+                    context,
+                    src_host_name,
+                    usb_vid,
+                    usb_pid,
+                    usb_port,
+                    "True")
+
+            if src_host_name != instance.host:
+                self.compute_api.usb_mapped(
+                    context,
+                    src_host_name,
+                    instance.host,
+                    usb_vid,
+                    usb_pid,
+                    usb_port,
+                    "True")
+                eventlet.sleep(3)
 
     def usb_mounted(self, req, body):
         """Mount the usb device to the local instance"""
@@ -425,7 +440,7 @@ class UsbMappingController(wsgi.Controller):
 
         # set usb auto mapping if vm not in src_host
         auto_mapping = usb_mounted.get("auto_map", True)
-        if auto_mapping:
+        if auto_mapping and mounted == "True":
             self._usb_auto_mapping(req, context, instance, usb_mounted)
             dst_host_name = instance.host
         self.compute_api.usb_mounted(context,
