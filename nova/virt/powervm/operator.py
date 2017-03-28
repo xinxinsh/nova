@@ -28,9 +28,11 @@ from oslo_service import loopingcall
 from oslo_utils import excutils
 from oslo_utils import timeutils
 
+from nova.api.metadata import base as instance_metadata
 from nova import exception as n_exc
 from nova.i18n import _LI, _LW, _LE
 from nova.compute import power_state
+from nova.virt import configdrive
 from nova.virt import hardware
 from nova.virt.powervm import blockdev
 from nova.virt.powervm import command
@@ -1749,6 +1751,8 @@ class PowerHMCOperator(PowerVMOperator):
                         is_iso = True
                     else:
                         is_iso = False
+                else:
+                    image_id = None
                 managed_system = instance['node']
                 vios_pid = self._operator.get_vios_lpar_id(managed_system)
                 disk_adapter = self._get_disk_adapter(managed_system)
@@ -1803,6 +1807,33 @@ class PowerHMCOperator(PowerVMOperator):
                             volume_name = volume_data['volume_name'][0:15]
                             self._operator.attach_disk_to_vhost(managed_system,
                                 vios_pid, volume_name, vhost)
+
+                # Config drive
+                if configdrive.required_by(instance):
+                    LOG.info(_LI('Using config drive'), instance=instance)
+                    extra_md = {}
+
+                    inst_md = instance_metadata.InstanceMetadata(instance,
+                        extra_md=extra_md, network_info=network_info)
+                    with configdrive.ConfigDriveBuilder(
+                            instance_md=inst_md) as cdb:
+                        configdrive_path = \
+                            disk_adapter.get_disk_config_path(instance.uuid)
+                        LOG.info(_LI('Creating config drive at %(path)s'),
+                                 {'path': configdrive_path}, instance=instance)
+                        try:
+                            cdb.make_drive(configdrive_path)
+                        except processutils.ProcessExecutionError as e:
+                            with excutils.save_and_reraise_exception():
+                                LOG.error(_LE('Creating config drive failed '
+                                              'with error: %s'),
+                                          e, instance=instance)
+                    iso_cd = disk_adapter.copy_cd_for_instance(
+                        configdrive_path)
+                    cd_opt_name = instance.uuid[0:8] + '.disk.config'
+                    disk_adapter.create_cd_opt(cd_opt_name, iso_cd)
+                    self._operator.attach_vopt_to_vhost(managed_system,
+                            vios_pid, cd_opt_name, vhost)
 
             except Exception as e:
                 LOG.exception(_LE("PowerVM image creation failed: %s") %
