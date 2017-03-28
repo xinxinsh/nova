@@ -2255,3 +2255,22 @@ def USBAccessManagement_add(context, usb_pid, usb_vid, project_id):
 def USBAccessManagement_delete(context, usb_pid, usb_vid, project_id):
     return IMPL.USBAccessManagement_delete(context, usb_pid,
                                            usb_vid, project_id)
+
+
+###################
+
+
+def usb_mount_get_by_instance_id(context, instance_id):
+    return IMPL.usb_mount_get_by_instance_id(context, instance_id)
+
+
+def usb_mount_get_by_vid_pid(context, usb_vid, usb_pid):
+    return IMPL.usb_mount_get_by_vid_pid(context, usb_vid, usb_pid)
+
+
+def usb_mount_create(context, values):
+    return IMPL.usb_mount_create(context, values)
+
+
+def usb_mount_update(context, usb_vid, usb_pid, values):
+    return IMPL.usb_mount_update(context, usb_vid, usb_pid, values)

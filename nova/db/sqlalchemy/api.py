@@ -7520,3 +7520,41 @@ def USBAccessManagement_delete(context, usb_pid, usb_vid, project_id):
             update({"usb_pid": usb_pid,
                     "usb_vid": usb_vid,
                     "project_id": project_ids})
+
+
+#############################
+
+
+@require_context
+@main_context_manager.reader
+def usb_mount_get_by_instance_id(context, instance_id):
+    query = model_query(context, models.UsbMount)
+    query = query.filter(models.UsbMount.instance_id == instance_id)
+    return query.all()
+
+
+@require_context
+@main_context_manager.reader
+def usb_mount_get_by_vid_pid(context, usb_vid, usb_pid):
+    result = model_query(context, models.UsbMount).\
+        filter_by(usb_vid=usb_vid).filter_by(usb_pid=usb_pid).first()
+    return result
+
+
+@require_context
+@pick_context_manager_writer
+def usb_mount_create(context, values):
+    usb_mount_ref = models.UsbMount()
+    usb_mount_ref.update(values)
+    try:
+        usb_mount_ref.save(context.session)
+    except db_exc.DBDuplicateEntry:
+        raise exception.UsbExists(usb_vid=values['usb_vid'],
+                                  usb_pid=values['usb_pid'])
+    return usb_mount_ref
+
+
+@require_context
+@pick_context_manager_writer
+def usb_mount_update(context, usb_vid, usb_pid, values):
+    usb_mount_get_by_vid_pid(context, usb_vid, usb_pid).update(values)

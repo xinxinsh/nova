@@ -78,6 +78,7 @@ class TestSoftDeletesDeprecated(test.NoDBTestCase):
             'snapshots',
             'task_log',
             'usb_access_management',
+            'usb_mount',
             'virtual_interfaces',
             'volume_id_mappings',
             'volume_usage_cache'

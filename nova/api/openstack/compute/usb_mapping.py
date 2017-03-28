@@ -22,6 +22,7 @@ from nova.compute import vm_states
 from nova import db
 from nova import exception
 from nova.i18n import _
+from nova import objects
 from nova import servicegroup
 from oslo_log import log as logging
 import webob
@@ -425,7 +426,7 @@ class UsbMappingController(wsgi.Controller):
         # set usb auto mapping if vm not in src_host
         auto_mapping = usb_mounted.get("auto_map", True)
         if auto_mapping:
-            self._auto_mapping(req, context, instance, usb_mounted)
+            self._usb_auto_mapping(req, context, instance, usb_mounted)
             dst_host_name = instance.host
         self.compute_api.usb_mounted(context,
                                      instance,
@@ -433,6 +434,50 @@ class UsbMappingController(wsgi.Controller):
                                      usb_vid,
                                      usb_pid,
                                      mounted)
+
+        detach_type = usb_mounted.get("detach_type", "auto")
+
+        usb_port = None
+        hosts = self._get_hosts(context)
+        for host in hosts:
+            usb_list = self.compute_api.get_usb_host_list(context, host)
+
+            for i in range(len(usb_list)):
+                if usb_vid == usb_list[i]['usb_vid'] \
+                        and usb_pid == usb_list[i]['usb_pid']:
+                    usb_port = usb_list[i]['usb_port']
+
+        usb_mount = objects.UsbMount.get_by_vid_pid(context, usb_vid, usb_pid)
+        if not usb_mount:
+            usb_mount = objects.UsbMount(context=context)
+            usb_mount.usb_vid = usb_vid
+            usb_mount.usb_pid = usb_pid
+            usb_mount.usb_port = usb_port
+            usb_mount.src_host_name = src_host_name
+            usb_mount.dst_host_name = dst_host_name
+            if mounted == "True":
+                usb_mount.instance_id = instance_id
+                usb_mount.mounted = True
+            else:
+                usb_mount.instance_id = None
+                usb_mount.mounted = False
+            usb_mount.create()
+        else:
+            usb_mount.src_host_name = src_host_name
+            usb_mount.dst_host_name = dst_host_name
+            usb_mount.usb_port = usb_port
+            if mounted == "True":
+                usb_mount.instance_id = instance_id
+                usb_mount.mounted = True
+                usb_mount.save()
+            else:
+                if detach_type != "auto":
+                    usb_mount.instance_id = None
+                    usb_mount.mounted = False
+                    usb_mount.save()
+                else:
+                    usb_mount.is_auto = True
+                    usb_mount.save()
 
         return webob.Response(status_int=200)
 

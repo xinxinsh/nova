@@ -1695,3 +1695,18 @@ class UsbAccessInfo(BASE, NovaBase, models.SoftDeleteMixin):
     usb_pid = Column(String(255), primary_key=True)
     usb_vid = Column(String(255), primary_key=True)
     project_id = Column(String(255))
+
+
+#############################
+
+
+class UsbMount(BASE, NovaBase, models.SoftDeleteMixin):
+    __tablename__ = 'usb_mount'
+    usb_vid = Column(String(255), primary_key=True)
+    usb_pid = Column(String(255), primary_key=True)
+    usb_port = Column(String(255), nullable=True)
+    src_host_name = Column(String(255))
+    dst_host_name = Column(String(255))
+    instance_id = Column(String(255), nullable=True)
+    mounted = Column(Boolean, default=False)
+    is_auto = Column(Boolean, default=False)

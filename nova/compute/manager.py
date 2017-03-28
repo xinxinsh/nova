@@ -6246,6 +6246,107 @@ class ComputeManager(manager.Manager):
                                                   "vm_status_error.end")
 
     @periodic_task.periodic_task(
+        spacing=30)
+    def _check_usb_status(self, context):
+        """Called periodically. On every call, try to check the list of
+        usb, then attach to the instance
+        """
+
+        LOG.debug('Checking the list of usb, then attach to the instance')
+
+        db_instances = objects.InstanceList.get_by_host(
+            context, self.host, expected_attrs=[], use_slave=True)
+
+        for inst in db_instances:
+            if inst.vm_state in [vm_states.ACTIVE,
+                                 vm_states.PAUSED,
+                                 vm_states.SUSPENDED,
+                                 vm_states.STOPPED] \
+                    and inst.task_state is None:
+                db_usb_list = objects.UsbMountList.get_by_instance_id(
+                    context,
+                    inst.uuid)
+                for db_usb in db_usb_list:
+                    if db_usb and db_usb.mounted:
+                        if db_usb.is_auto:
+                            if db_usb.dst_host_name == inst.host:
+                                pass
+                            else:
+                                try:
+                                    if db_usb.dst_host_name != inst.host \
+                                            and db_usb.dst_host_name != \
+                                                    db_usb.src_host_name:
+                                        self.compute_api.usb_mapped(
+                                            context,
+                                            db_usb.src_host_name,
+                                            db_usb.dst_host_name,
+                                            db_usb.usb_vid,
+                                            db_usb.usb_pid,
+                                            db_usb.usb_port,
+                                            "False")
+                                        time.sleep(2)
+
+                                    # check the USB status in real time
+                                    usb_list = \
+                                        self.compute_api.get_usb_host_list(
+                                        context,
+                                        db_usb.src_host_name)
+                                    for usb_info in usb_list:
+                                        if(usb_info['usb_vid'] ==
+                                               db_usb.usb_vid
+                                           and usb_info['usb_pid'] ==
+                                                db_usb.usb_pid
+                                           and usb_info['usb_port'] ==
+                                                db_usb.usb_port):
+                                            if usb_info['usb_host_status'] \
+                                                    == 'plugged':
+                                                self.compute_api.usb_shared(
+                                                    context,
+                                                    db_usb.src_host_name,
+                                                    db_usb.usb_vid,
+                                                    db_usb.usb_pid,
+                                                    db_usb.usb_port,
+                                                    "True")
+
+                                    if db_usb.src_host_name != inst.host:
+                                        self.compute_api.usb_mapped(
+                                            context,
+                                            db_usb.src_host_name,
+                                            inst.host,
+                                            db_usb.usb_vid,
+                                            db_usb.usb_pid,
+                                            db_usb.usb_port,
+                                            "True")
+                                        time.sleep(3)
+                                except Exception:
+                                    pass
+                        try:
+                            # check usb device if in this compute node
+                            usb_exist_flag = False
+                            usb_id = db_usb.usb_vid + ':' + db_usb.usb_pid
+                            try:
+                                out, err = utils.execute('lsusb')
+                                if usb_id in out:
+                                    usb_exist_flag = True
+                            except Exception:
+                                LOG.error(_('lsusb error'))
+                            if not usb_exist_flag:
+                                continue
+
+                            # check usb status for instance
+                            attach_status = self.usb_status(context, inst,
+                                                            db_usb.usb_vid,
+                                                            db_usb.usb_pid)
+                            if not attach_status:
+                                self.usb_mounted(context, inst, db_usb.usb_vid,
+                                                 db_usb.usb_pid, "True")
+                                db_usb.dst_host_name = inst.host
+                                db_usb.is_auto = False
+                                db_usb.save()
+                        except Exception:
+                            pass
+
+    @periodic_task.periodic_task(
         spacing=CONF.heal_instance_info_cache_interval)
     def _heal_instance_info_cache(self, context):
         """Called periodically.  On every call, try to update the

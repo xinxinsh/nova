@@ -2213,3 +2213,8 @@ class CpuHotplugFailed(Invalid):
 class CpuShowFailed(Invalid):
     msg_fmt = _("Failed to show cpu data to "
                 "%(instance_uuid)s")
+
+
+class UsbExists(NovaException):
+    msg_fmt = _(
+        "Usb with usb_vid %(usb_vid)s, usb_pid %(usb_pid)s already exists.")
