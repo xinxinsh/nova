@@ -320,7 +320,18 @@ libvirt_opts = [
                'kernel (usually 1-99)'),
     cfg.StrOpt('iso_dir',
                default='/var/lib/nova/iso',
-               help='Directory to mount iso when images_type is not rbd.')
+               help='Directory to mount iso when images_type is not rbd.'),
+    cfg.BoolOpt('max_set',
+                default=True,
+                help='Whether to set cpu & mem max , when boot and reboot vm'
+                     'If True, vm will set cpu_max & mem_max.'
+                     'If False, vm will boot with out cpu_max & mem_max.'),
+    cfg.IntOpt('cpu_max',
+               default=64,
+               help='when vm boot set vm cpu_max to hotplug vcpu'),
+    cfg.IntOpt('mem_max',
+               default=61440,
+               help='when vm boot set vm mem_max to hotplug mem')
     ]
 
 CONF = nova.conf.CONF
@@ -4343,6 +4354,8 @@ class LibvirtDriver(driver.ComputeDriver):
 
         if 'cpu_max' in flavor.extra_specs:
             cpu.sockets = flavor.extra_specs.get('cpu_max')
+        elif CONF.libvirt.max_set:
+            cpu.sockets = CONF.libvirt.cpu_max
         else:
             cpu.sockets = topology.sockets
         cpu.cores = topology.cores
@@ -5409,11 +5422,15 @@ class LibvirtDriver(driver.ComputeDriver):
         # Add cpu max
         if 'cpu_max' in flavor.extra_specs:
             guest.vcpus_max = flavor.extra_specs.get('cpu_max')
+        elif CONF.libvirt.max_set:
+            guest.vcpus_max = CONF.libvirt.cpu_max
         else:
             guest.vcpus_max = flavor.vcpus
         # Add max_mem
         if 'mem_max' in flavor.extra_specs:
             guest.mem_max = int(flavor.extra_specs.get('mem_max')) * units.Ki
+        elif CONF.libvirt.max_set:
+            guest.mem_max = int(CONF.libvirt.mem_max) * units.Mi
         else:
             # max_mem must be larger than current_mem
             guest.mem_max = int(flavor.memory_mb + 1) * units.Ki
