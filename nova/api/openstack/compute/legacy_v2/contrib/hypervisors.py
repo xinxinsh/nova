@@ -57,7 +57,8 @@ class HypervisorsController(object):
                       'hypervisor_type', 'hypervisor_version',
                       'free_ram_mb', 'free_disk_gb', 'current_workload',
                       'running_vms', 'cpu_info', 'disk_available_least',
-                      'pci_stats', 'extra_resources')
+                      'pci_stats', 'extra_resources', 'cpu_allocation_ratio',
+                      'ram_allocation_ratio')
             ext_loaded = self.ext_mgr.is_loaded('os-extended-hypervisors')
             if ext_loaded:
                 fields += ('host_ip',)

@@ -53,7 +53,9 @@ TEST_HYPERS = [
          running_vms=2,
          cpu_info='cpu_info',
          disk_available_least=100,
-         host_ip=netaddr.IPAddress('1.1.1.1')),
+         host_ip=netaddr.IPAddress('1.1.1.1'),
+         cpu_allocation_ratio=16.0,
+         ram_allocation_ratio=1.0),
     dict(id=2,
          service_id=2,
          host="compute2",
@@ -74,7 +76,9 @@ TEST_HYPERS = [
          running_vms=2,
          cpu_info='cpu_info',
          disk_available_least=100,
-         host_ip=netaddr.IPAddress('2.2.2.2'))]
+         host_ip=netaddr.IPAddress('2.2.2.2'),
+         cpu_allocation_ratio=16.0,
+         ram_allocation_ratio=1.0)]
 
 
 TEST_SERVICES = [
