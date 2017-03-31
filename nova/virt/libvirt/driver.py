@@ -3319,7 +3319,7 @@ class LibvirtDriver(driver.ComputeDriver):
         path = self._get_vm_socket_file(instance)
         libvirt_utils.chown(path, 'nova:nova')
         sock = socket.socket(socket.AF_UNIX)
-        sock.settimeout(2)
+        sock.settimeout(10)
         try:
             sock.connect(path)
         except socket.error:
@@ -3444,32 +3444,60 @@ class LibvirtDriver(driver.ComputeDriver):
         # create xml of the vm_stat
         return True, self._create_vm_stat_xml(context, vm_stat_flavor, xml)
 
-    def _reload_virtio_net(self, instance):
-        LOG.debug("call qga start:%s", timeutils.utcnow(), )
+    def _reload_virtio_net_for_linux(self, instance, sock):
         message = {"execute": "guest-terminal-cmd",
           "arguments": {
             "cmd": "modprobe -r virtio_net && modprobe virtio_net"}
          }
-        sock = self._connect_vm_socket(instance)
         ret = self._call_qemu_guest_agent(sock, message, instance)
-        if ret is not True:
+        if not ret:
             LOG.warn(_LW('Reload virtio_net failed.'), instance=instance)
+            return False
+        return True
+
+    def _set_admin_passwd_for_linux(self, instance, admin_passwd, sock):
+        message = {"execute": "guest-change-password",
+          "arguments": {}
+         }
+        message['arguments']['password'] = admin_passwd
+        LOG.info('admin_passwd: %s', admin_passwd, instance=instance)
+        ret = self._call_qemu_guest_agent(sock, message, instance)
+        if not ret:
+            LOG.warn(_LW('guest change password failed.'), instance=instance)
+            return False
+        return True
+
+    def _update_ipaddr_and_passwd_for_linux(self, instance, injected_files):
+        # update ipaddr
+        sock = self._connect_vm_socket(instance)
+        if not self._reload_virtio_net_for_linux(instance, sock):
             self._close_vm_socket(sock, instance)
             return False
 
+        # update admin password
+        admin_password = None
+        for injected_file in injected_files:
+            if injected_file[0] == '/etc/qga/passwd/passwd.conf':
+                admin_password = injected_file[1]
+        if admin_password:
+            if not self._set_admin_passwd_for_linux(instance, admin_password,
+                                                    sock):
+                self._close_vm_socket(sock, instance)
+                return False
+
         self._close_vm_socket(sock, instance)
-        LOG.debug("call qga end:%s", timeutils.utcnow(), instance=instance)
         return True
 
-    def _update_ipaddr(self, instance):
+    def _update_ipaddr_and_passwd(self, instance, injected_files):
         # todo: support fot windows in futrue
         if instance.os_type == "windows":
             return True
         else:
-            return self._reload_virtio_net(instance)
+            return self._update_ipaddr_and_passwd_for_linux(instance,
+                                                            injected_files)
 
     def _live_upgrade(self, context, instance, xml, vm_stat_xml,
-                      network_info, block_device_info):
+                      network_info, block_device_info, injected_files):
         """If instance create from vm_stat, it need hotplugin vcpu,
            attach memory, configure ip address and so on.
            One live-upgrade failed, hard reboot this instance.
@@ -3514,8 +3542,8 @@ class LibvirtDriver(driver.ComputeDriver):
                                   block_device_info)
                 return
 
-        # configure guest ip address
-        if not self._update_ipaddr(instance):
+        # configure guest ip address and set admin password
+        if not self._update_ipaddr_and_passwd(instance, injected_files):
             delete_vm_stat(instance_name)
             self._hard_reboot(context, instance, network_info,
                               block_device_info)
@@ -3545,6 +3573,7 @@ class LibvirtDriver(driver.ComputeDriver):
                                   disk_info, image_meta,
                                   block_device_info=block_device_info,
                                   write_to_disk=True)
+
         _live_upgrade_flag, vm_stat_xml = self._create_vm_stat(context,
                                                                instance,
                                                                xml)
@@ -3562,7 +3591,8 @@ class LibvirtDriver(driver.ComputeDriver):
                 # If vm start from vm_stat, it need live-upgrade
                 if _live_upgrade_flag:
                     self._live_upgrade(context, instance, xml, vm_stat_xml,
-                                       network_info, block_device_info)
+                                       network_info, block_device_info,
+                                       injected_files)
                 LOG.info(_LI("Instance spawned successfully."),
                          instance=instance)
                 raise loopingcall.LoopingCallDone()
