@@ -13,6 +13,9 @@
 #   under the License.
 
 import eventlet
+from eventlet import GreenPool
+eventlet.monkey_patch()
+
 from nova.api.openstack import common
 from nova.api.openstack import extensions
 from nova.api.openstack import wsgi
@@ -40,6 +43,7 @@ class UsbMappingController(wsgi.Controller):
         self.compute_api = compute.API()
         self.host_api = compute.HostAPI()
         self.servicegroup_api = servicegroup.API()
+        self.pool = GreenPool(10000)
 
     def _get_hosts(self, context):
         """Returns a list of hosts"""
@@ -64,31 +68,40 @@ class UsbMappingController(wsgi.Controller):
         authorize(context)
 
         usb_host_list = []
+        rets = []
         try:
             hosts = self._get_hosts(context)
             for host in hosts:
-                host_info = dict()
+                ret = self.pool.spawn(self.compute_api.get_usb_host_list,
+                                      *[context, host])
+                rets.append({'ret': ret, 'host': host})
+        except Exception:
+            msg = _("get usb index action failed")
+            raise exc.HTTPUnprocessableEntity(explanation=msg)
 
-                host_info['hostname'] = host
-                usb_list = self.compute_api.get_usb_host_list(context, host)
+        for info in rets:
+            usb_list = info['ret'].wait()
 
-                for i in range(len(usb_list)):
-                    if 'in use by' in usb_list[i]['usb_host_status']:
-                        usb_host = usb_list[i]['usb_host_status'].split()[3]
-                    else:
-                        usb_host = host
-                    usb_list[i]['usb_vm_status'] = \
-                        self.compute_api.get_usb_vm_status(
-                            context,
-                            usb_host,
-                            usb_list[i]['usb_vid'],
-                            usb_list[i]['usb_pid'])
+            host_info = dict()
 
-                host_info['usb_list'] = usb_list
+            host_info['hostname'] = info['host']
+            for i in range(len(usb_list)):
+                if 'in use by' in usb_list[i]['usb_host_status']:
+                    usb_host = usb_list[i]['usb_host_status'].split()[3]
+                else:
+                    usb_host = info['host']
+                usb_list[i]['usb_vm_status'] = \
+                    self.compute_api.get_usb_vm_status(
+                        context,
+                        usb_host,
+                        usb_list[i]['usb_vid'],
+                        usb_list[i]['usb_pid'])
 
-                usb_host_list.append(host_info)
-        except exception.NotFound as e:
-            raise exc.HTTPNotFound(explanation=e.format_message())
+            host_info['usb_list'] = usb_list
+
+            usb_host_list.append(host_info)
+
+        self.pool.waitall()
 
         return {'usb_host_list': usb_host_list}
 
