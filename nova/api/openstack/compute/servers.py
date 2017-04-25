@@ -867,6 +867,7 @@ class ServersController(wsgi.Controller):
         server_dict = body['clone']
 
         instance = self._get_server(context, req, id)
+        context.project_id = instance.project_id
         forced_host = instance.host
         if server_dict.get("forced_host", None):
             forced_host = server_dict.get("forced_host")
