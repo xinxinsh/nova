@@ -62,12 +62,11 @@ class AvailabilityZoneController(wsgi.Controller):
             availability_zones.get_availability_zones(ctxt)
 
         # Available services
-        enabled_services = objects.ServiceList.get_all(context, disabled=False,
-                                                       set_zones=True)
+        all_services = objects.ServiceList.get_all(context, set_zones=True)
         zone_hosts = {}
         host_services = {}
         api_services = ('nova-osapi_compute', 'nova-ec2', 'nova-metadata')
-        for service in enabled_services:
+        for service in all_services:
             if service.binary in api_services:
                 # Skip API services in the listing since they are not
                 # maintained in the same way as other services
