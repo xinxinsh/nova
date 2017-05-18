@@ -708,11 +708,22 @@ class LibvirtGenericVIFDriver(object):
         port_name = os.path.basename(
             vif['details'][network_model.VIF_DETAILS_VHOSTUSER_SOCKET])
         mtu = vif['network'].get_meta('mtu')
+        args = {}
+        if vif['details'].get(network_model.VIF_DETAILS_VHOSTUSER_MODE,
+                              False) == "client":
+            args['interface_type'] = \
+                            network_model.OVS_VHOSTUSER_INTERFACE_TYPE
+        else:
+            args['interface_type'] = \
+                            network_model.OVS_VHOSTUSER_CLIENT_INTERFACE_TYPE
+            args['vhost_server_path'] = vif['details'].get(
+                            network_model.VIF_DETAILS_VHOSTUSER_SOCKET,
+                            False)
+
         linux_net.create_ovs_vif_port(
             self.get_bridge_name(vif),
             port_name, iface_id, vif['address'],
-            instance.uuid, mtu,
-            interface_type=network_model.OVS_VHOSTUSER_INTERFACE_TYPE)
+            instance.uuid, mtu, **args)
 
     def plug_vhostuser(self, instance, vif):
         fp_plug = vif['details'].get(

@@ -1367,7 +1367,8 @@ def _ovs_vsctl(args):
 
 
 def _create_ovs_vif_cmd(bridge, dev, iface_id, mac,
-                        instance_id, interface_type=None):
+                        instance_id, interface_type=None,
+                        vhost_server_path=None):
     cmd = ['--', '--if-exists', 'del-port', dev, '--',
             'add-port', bridge, dev,
             '--', 'set', 'Interface', dev,
@@ -1377,17 +1378,21 @@ def _create_ovs_vif_cmd(bridge, dev, iface_id, mac,
             'external-ids:vm-uuid=%s' % instance_id]
     if interface_type:
         cmd += ['type=%s' % interface_type]
+    if vhost_server_path:
+        cmd += ['options:vhost-server-path=%s' % vhost_server_path]
     return cmd
 
 
 def create_ovs_vif_port(bridge, dev, iface_id, mac, instance_id,
-                        mtu=None, interface_type=None):
+                        mtu=None, interface_type=None,
+                        vhost_server_path=None):
     _ovs_vsctl(_create_ovs_vif_cmd(bridge, dev, iface_id,
                                    mac, instance_id,
                                    interface_type))
     # Note at present there is no support for setting the
     # mtu for vhost-user type ports.
-    if interface_type != network_model.OVS_VHOSTUSER_INTERFACE_TYPE:
+    if interface_type not in [network_model.OVS_VHOSTUSER_INTERFACE_TYPE,
+        network_model.OVS_VHOSTUSER_CLIENT_INTERFACE_TYPE]:
         _set_device_mtu(dev, mtu)
     else:
         LOG.debug("MTU not set on %(interface_name)s interface "

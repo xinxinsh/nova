@@ -82,6 +82,7 @@ VIF_DETAILS_VHOSTUSER_OVS_PLUG = 'vhostuser_ovs_plug'
 VIF_DETAILS_VHOSTUSER_FP_PLUG = 'vhostuser_fp_plug'
 # ovs vhost user interface type name
 OVS_VHOSTUSER_INTERFACE_TYPE = 'dpdkvhostuser'
+OVS_VHOSTUSER_CLIENT_INTERFACE_TYPE = 'dpdkvhostuserclient'
 
 # Constants for dictionary keys in the 'vif_details' field that are
 # valid for VIF_TYPE_TAP.
