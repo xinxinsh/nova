@@ -722,6 +722,7 @@ class LibvirtConfigGuestDisk(LibvirtConfigGuestDevice):
         self.source_name = None
         self.source_hosts = []
         self.source_ports = []
+        self.rbd_ceph_config = None
         self.target_dev = None
         self.target_path = None
         self.target_bus = None
@@ -784,6 +785,10 @@ class LibvirtConfigGuestDisk(LibvirtConfigGuestDevice):
                 if port is not None:
                     host.set('port', port)
                 source.append(host)
+            if (self.source_protocol == 'rbd' and
+                self.rbd_ceph_config is not None):
+                config = etree.Element('config', file=self.rbd_ceph_config)
+                source.append(config)
             dev.append(source)
 
         if self.auth_secret_type is not None:

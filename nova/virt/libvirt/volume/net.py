@@ -77,6 +77,10 @@ class LibvirtNetVolumeDriver(libvirt_volume.LibvirtBaseVolumeDriver):
             auth_enabled = True  # Force authentication locally
             if CONF.libvirt.rbd_user:
                 conf.auth_username = CONF.libvirt.rbd_user
+        if conf.source_protocol == 'rbd':
+            conf.rbd_ceph_config = netdisk_properties.get('rbd_ceph_config',
+                                                          None)
+
         if conf.source_protocol == 'iscsi':
             try:
                 conf.source_name = ("%(target_iqn)s/%(target_lun)s" %
