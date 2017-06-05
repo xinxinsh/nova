@@ -118,6 +118,11 @@ from nova.virt import watchdog_actions
 from nova import volume
 from nova.volume import encryptors
 
+try:
+    from ussvd.client import Client as uclient
+except Exception:
+    pass
+
 libvirt = None
 
 uefi_logged = False
@@ -1321,6 +1326,9 @@ class LibvirtDriver(driver.ComputeDriver):
                 self._cleanup_lvm(instance, block_device_info)
             if CONF.libvirt.images_type == 'rbd':
                 self._cleanup_rbd(instance)
+        # just deactive disks if destroy_disks is false
+        if CONF.libvirt.images_type == 'ussvd':
+            self._cleanup_ussvd(instance, destroy_disks)
 
         is_shared_block_storage = False
         if migrate_data and 'is_shared_block_storage' in migrate_data:
@@ -1386,6 +1394,25 @@ class LibvirtDriver(driver.ComputeDriver):
         if disks:
             lvm.remove_volumes(disks)
 
+    def _cleanup_ussvd(self, instance, is_delete_vol):
+        disks = self._ussvd_disks(instance)
+        if disks:
+            client = uclient()
+            datastore = {"type": 'lvm',
+                         "path": CONF.libvirt.vgname}
+            for dsk in disks:
+                # we try to deactive the chain first
+                # as delete will remain the image active
+                # need to change the ussvd to deactive image when delete
+                # the last volume created from image
+                client.deactive_volume(self._host.get_hostname(),
+                                       datastore,
+                                       dsk['name'])
+                if is_delete_vol:
+                    client.delete_volume(self._host.get_hostname(),
+                                         datastore,
+                                         dsk['name'])
+
     def _lvm_disks(self, instance):
         """Returns all LVM disks for given instance object."""
         if CONF.libvirt.images_volume_group:
@@ -1405,6 +1432,26 @@ class LibvirtDriver(driver.ComputeDriver):
             disk_names = filter(belongs_to_instance, logical_volumes)
             disks = map(fullpath, disk_names)
             return disks
+        return []
+
+    def _ussvd_disks(self, instance):
+        if CONF.libvirt.vgname:
+            vg = os.path.join('/dev/', CONF.libvirt.vgname)
+            if not os.path.exists(vg):
+                return []
+            pattern = '%s_' % instance.uuid
+
+            def belongs_to_instance(disk):
+                return disk['name'].startswith(pattern)
+
+            client = uclient()
+            datastore = {"type": 'lvm',
+                         "path": CONF.libvirt.vgname}
+            all_lvs = client.list_volume(self._host.get_hostname(),
+                                                datastore,
+                                                False)
+            disk_names = filter(belongs_to_instance, all_lvs)
+            return disk_names
         return []
 
     def get_volume_connector(self, instance):
@@ -1448,6 +1495,8 @@ class LibvirtDriver(driver.ComputeDriver):
             self._undefine_domain(instance)
             self.unplug_vifs(instance, network_info)
             self.unfilter_instance(instance, network_info)
+            if hasattr(backend, 'deactive_image'):
+                backend.deactive_image()
 
     def _get_volume_driver(self, connection_info):
         driver_type = connection_info.get('driver_volume_type')
@@ -3764,6 +3813,10 @@ class LibvirtDriver(driver.ComputeDriver):
                 # migrate to rbd yet. Try to detach disk_config.
                 LOG.debug('Config drive not found in RBD, this may old '
                       'config lead, so detach it', instance=instance)
+                check_config = True
+            if CONF.libvirt.images_type == 'ussvd':
+                LOG.debug('Config driver not found in ussvd '
+                          'detach it', instance=instance)
                 check_config = True
         return check_config
 
@@ -6208,6 +6261,18 @@ class LibvirtDriver(driver.ComputeDriver):
                                CONF.libvirt.images_volume_group)
         elif CONF.libvirt.images_type == 'rbd':
             info = LibvirtDriver._get_rbd_driver().get_pool_info()
+        elif CONF.libvirt.images_type == 'ussvd':
+            import socket
+            client = uclient()
+            datastore = {"type": 'lvm',
+                         "path": CONF.libvirt.vgname}
+            pool_info = client.get_pool_capacity(socket.gethostname(),
+                                                 datastore)
+            info = {}
+            info['total'] = int(pool_info['total'])
+            info['free'] = int(pool_info['free'])
+            info['used'] = info['total'] - info['free']
+            return info
         else:
             info = libvirt_utils.get_fs_info(CONF.instances_path)
 
@@ -7233,7 +7298,6 @@ class LibvirtDriver(driver.ComputeDriver):
 
             migratable_flag = getattr(libvirt, 'VIR_DOMAIN_XML_MIGRATABLE',
                                       None)
-
             if (migratable_flag is None or (
                     not listen_addrs and not migrate_data.bdms)):
                 # TODO(alexs-h): These checks could be moved to the
@@ -7909,6 +7973,13 @@ class LibvirtDriver(driver.ComputeDriver):
                     # Please see bug/1246201 for more details.
                     src = "%s:%s/disk.config" % (instance.host, instance_dir)
                     self._remotefs.copy_file(src, instance_dir)
+            if (CONF.libvirt.images_type == 'ussvd' and
+                    not migrate_data.is_volume_backed):
+                def image(fname, image_type=CONF.libvirt.images_type):
+                    return self.image_backend.image(instance,
+                                                    fname, image_type)
+                backend = image('disk')
+                backend.active_image()
 
             if not is_block_migration:
                 # NOTE(angdraug): when block storage is shared between source
@@ -8046,10 +8117,11 @@ class LibvirtDriver(driver.ComputeDriver):
             # Get image type and create empty disk image, and
             # create backing file in case of qcow2.
             instance_disk = os.path.join(instance_dir, base)
-            if not info['backing_file'] and not os.path.exists(instance_disk):
+            if (not info['backing_file'] and not os.path.exists(instance_disk)
+                    and CONF.libvirt.images_type != 'ussvd'):
                 libvirt_utils.create_image(info['type'], instance_disk,
                                            info['virt_disk_size'])
-            elif info['backing_file']:
+            elif info['backing_file'] and CONF.libvirt.images_type != 'ussvd':
                 # Creating backing file follows same way as spawning instances.
                 cache_name = os.path.basename(info['backing_file'])
 
@@ -8621,8 +8693,14 @@ class LibvirtDriver(driver.ComputeDriver):
 
                 # We will not copy over the swap disk here, and rely on
                 # finish_migration/_create_image to re-create it for us.
-                if not (fname == 'disk.swap' and
-                    active_flavor.get('swap', 0) != flavor.get('swap', 0)):
+
+                # we don't need to copy_image if images_type is ussvd
+                is_exist = os.path.exists(from_path)
+                is_ussvd = CONF.libvirt.images_type == 'ussvd'
+                if (not (not is_exist and is_ussvd) and
+                        not (fname == 'disk.swap' and
+                             active_flavor.get('swap', 0) !=
+                             flavor.get('swap', 0))):
 
                     compression = info['type'] not in NO_COMPRESSION_TYPES
                     libvirt_utils.copy_image(from_path, img_path, host=dest,

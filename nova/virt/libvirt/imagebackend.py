@@ -17,8 +17,11 @@ import abc
 import base64
 import contextlib
 import functools
+import math
 import os
 import shutil
+import six
+import socket
 
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -27,7 +30,7 @@ from oslo_utils import excutils
 from oslo_utils import fileutils
 from oslo_utils import strutils
 from oslo_utils import units
-import six
+from six.moves import urllib
 
 import nova.conf
 from nova import exception
@@ -44,11 +47,17 @@ from nova.virt.libvirt.storage import dmcrypt
 from nova.virt.libvirt.storage import lvm
 from nova.virt.libvirt.storage import rbd_utils
 from nova.virt.libvirt import utils as libvirt_utils
+try:
+    from ussvd.client import Client as USSVDClient
+    from ussvd import exception as ussvd_exception
+except Exception:
+    pass
 
 __imagebackend_opts = [
     cfg.StrOpt('images_type',
                default='default',
-               choices=('raw', 'qcow2', 'lvm', 'rbd', 'ploop', 'default'),
+               choices=('raw', 'qcow2', 'lvm', 'rbd', 'ploop',
+                        'ussvd', 'default'),
                help='VM Images format. If default is specified, then'
                     ' use_cow_images flag is used instead of this one.'),
     cfg.StrOpt('images_volume_group',
@@ -69,6 +78,9 @@ __imagebackend_opts = [
                help='Discard option for nova managed disks. Need'
                     ' Libvirt(1.0.6) Qemu1.5 (raw format) Qemu1.6(qcow2'
                     ' format)'),
+    cfg.StrOpt('vgname',
+               default='testvg',
+               help='ussvd volume group name for libvirt image files')
         ]
 
 CONF = nova.conf.CONF
@@ -713,7 +725,7 @@ class Lvm(Image):
             resize = size > base_size
             size = size if resize else base_size
             lvm.create_volume(self.vg, self.lv,
-                                         size, sparse=self.sparse)
+                              size, sparse=self.sparse)
             if self.ephemeral_key_uuid is not None:
                 encrypt_lvm_image()
             # NOTE: by calling convert_image_unsafe here we're
@@ -1114,6 +1126,7 @@ class Backend(object):
             'lvm': Lvm,
             'rbd': Rbd,
             'ploop': Ploop,
+            'ussvd': Ussvd,
             'default': Qcow2 if use_cow else Raw
         }
 
@@ -1144,3 +1157,236 @@ class Backend(object):
         """
         backend = self.backend(image_type)
         return backend(instance=instance, path=disk_path)
+
+
+class Ussvd(Image):
+
+    SUPPORTS_CLONE = True
+
+    @staticmethod
+    def escape(filename):
+        return filename.replace('_', '__')
+
+    def __init__(self, instance=None, disk_name=None, path=None, **kwargs):
+        """Image initialization.
+
+        :source_type: block or file
+        :driver_format: raw or qcow2
+        :is_block_dev:
+        """
+        super(Ussvd, self).__init__('block', 'qcow2', True)
+        if path:
+            self.path = path
+            self.lv = os.path.split(self.path)[-1]
+            self.vg = CONF.libvirt.vgname
+        else:
+            if not CONF.libvirt.vgname:
+                raise RuntimeError(_('You should specify'
+                                     ' vgname'
+                                     ' flag to use ussvd images.'))
+            self.vg = CONF.libvirt.vgname
+            self.lv = '%s_%s' % (instance.uuid,
+                                 self.escape(disk_name))
+            self.path = os.path.join('/dev', self.vg, self.lv)
+        self.client = USSVDClient()
+        self.datastore = {'type': 'lvm', 'path': self.vg}
+        self.server = socket.gethostname()
+
+    def _supports_encryption(self):
+        """Used to test that the backend supports encryption.
+        Override in the subclass if backend supports encryption.
+        """
+        return False
+
+    def _B2GB(self, size):
+        return int(math.ceil(size / 1024.0 / 1024.0 / 1024.0))
+
+    def _GB2B(self, size):
+        return size << 30
+
+    def active_image(self):
+        self.client.active_volume(self.server,
+                                  self.datastore,
+                                  self.lv)
+
+    def deactive_image(self):
+        self.client.deactive_volume(self.server,
+                                    self.datastore,
+                                    self.lv)
+
+    def create_image(self, prepare_template, base, size, *args, **kwargs):
+        filename = self._get_lock_name(base)
+
+        @utils.synchronized(filename, external=True, lock_path=self.lock_path)
+        def create_ussvd_image(base, size):
+            self.verify_base_size(base, size)
+            self.client.import_image(self.server,
+                                     self.datastore,
+                                     self.lv,
+                                     base)
+            self.active_image()
+
+        image_exist = self.check_image_exists()
+
+        if not os.path.exists(base) and not image_exist:
+            prepare_template(target=base, max_size=size, *args, **kwargs)
+
+        # prepare_template may call clone and image now exist
+        image_exist = self.check_image_exists()
+        # lv not active
+        if image_exist and not os.path.exists(self.path):
+            self.active_image()
+        elif not image_exist:
+            create_ussvd_image(base, size)
+
+        current_size = self.get_disk_size(self.path)
+        if size > current_size:
+            LOG.debug("ussvd resize image from %s to %s" % (current_size,
+                                                            size))
+            self.resize_image(size)
+
+    def resize_image(self, size):
+        """Resize image to size (in bytes).
+
+        :size: Desired size of image in bytes
+
+        """
+        # this check is for calling from cache
+        current_size = self.get_disk_size(self.path)
+        if size > current_size:
+            size_in_GB = self._B2GB(size)
+            self.client.resize_volume(self.server, self.datastore,
+                                      self.lv, False, size_in_GB)
+            # resize_volume offline will deactive the volume
+            self.active_image()
+            disk.resize2fs(self.path, run_as_root=True)
+
+    def check_image_exists(self):
+        try:
+            self.client.show_volume(self.server,
+                                    self.datastore,
+                                    self.lv)
+        except ussvd_exception.LVNotExist:
+            return False
+        return True
+
+    def _can_fallocate(self):
+        return False
+
+    def snapshot_extract(self, target, out_format):
+        images.convert_image(self.path, target, 'qcow2', out_format)
+
+    def _get_driver_format(self):
+        return self.driver_format
+
+    @staticmethod
+    def is_shared_block_storage():
+        """True if the backend puts images on a shared block storage."""
+        return True
+
+    @staticmethod
+    def is_file_in_instance_path():
+        """True if the backend stores images in files under instance path."""
+        return False
+
+    def parse_uri(self, uri):
+        prefix = 'ussv://'
+        if not uri.startswith(prefix):
+            reason = _('URI must start with ussv://')
+            msg = _LI("Invalid URI: %s") % reason
+
+            LOG.info(msg)
+            raise exception.ImageUnacceptable(image_id=uri,
+                                              reason=msg)
+        try:
+            ascii_uri = str(uri)
+        except UnicodeError:
+            reason = _('URI contains non-ascii characters')
+            msg = _LI("Invalid URI: %s") % reason
+
+            LOG.info(msg)
+            raise exception.ImageUnacceptable(image_id=uri,
+                                              reason=msg)
+        pieces = ascii_uri[len(prefix):].split('/')
+        if len(pieces) == 3:
+            vg, image, snapshot = \
+                map(urllib.parse.unquote, pieces)
+        else:
+            reason = _('URI must have exactly 3 components')
+            msg = _LI("Invalid URI: %s") % reason
+
+            LOG.info(msg)
+            raise exception.ImageUnacceptable(image_id=uri,
+                                              reason=msg)
+        if any(map(lambda p: p == '', pieces)):
+            reason = _('URI cannot contain empty components')
+            msg = _LI("Invalid URI: %s") % reason
+
+            LOG.info(msg)
+            raise exception.ImageUnacceptable(image_id=uri,
+                                              reason=msg)
+        return vg, image, snapshot
+
+    def is_cloneable(self, image_location, image_meta):
+        url = image_location['url']
+        try:
+            vg, image, snapshot = self.parse_uri(url)
+        except exception.ImageUnacceptable as e:
+            LOG.debug('not cloneable: %s', e)
+            return False
+        if image_meta.get('disk_format') != 'qcow2':
+            reason = ("ussvd image clone requires image format to be "
+                      "'qcow2' but image {0} is '{1}'").format(
+                          url, image_meta.get('disk_format'))
+            LOG.debug(reason)
+            return False
+        if self.vg != vg:
+            reason = ("ussvd clone target vg %s not equal to source vg %s" %
+                      (self.vg, vg))
+            LOG.debug(reason)
+            return False
+        return True
+
+    def clone(self, context, image_id_or_uri):
+        image_meta = IMAGE_API.get(context, image_id_or_uri,
+                                   include_locations=True)
+        locations = image_meta['locations']
+
+        LOG.debug('Image locations are: %(locs)s' % {'locs': locations})
+
+        if image_meta.get('disk_format') not in ['qcow2']:
+            reason = _('Image is not qcow2 format')
+            raise exception.ImageUnacceptable(image_id=image_id_or_uri,
+                                              reason=reason)
+
+        for location in locations:
+            if self.is_cloneable(location, image_meta):
+                url = location['url']
+                vg, lv, snapshot = self.parse_uri(url)
+                lv_size = self.client.show_volume(self.server,
+                                                  self.datastore,
+                                                  lv)['size']
+                try:
+                    self.client.create_volume(self.server,
+                                              self.datastore,
+                                              self.lv,
+                                              lv_size,
+                                              thick_size=0,
+                                              vol_format='qcow2',
+                                              snapshot=snapshot)
+                    self.active_image()
+                    return
+                except Exception as e:
+                    LOG.error("create volume from image failed. "
+                              "Reason: %s" % str(e))
+
+        reason = _('No image locations are accessible')
+        raise exception.ImageUnacceptable(image_id=image_id_or_uri,
+                                          reason=reason)
+
+    def get_model(self, connection):
+        """Get the image information model
+
+        :returns: an instance of nova.virt.image.model.Image
+        """
+        return imgmodel.USSVDImage(self.lv, self.vg, self.datastore['type'])

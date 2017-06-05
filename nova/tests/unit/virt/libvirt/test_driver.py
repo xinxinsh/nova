@@ -7573,8 +7573,10 @@ class LibvirtConnTestCase(test.NoDBTestCase):
         drvr = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), False)
 
         migrate_data = objects.LibvirtLiveMigrateData(
+            is_shared_block_storage=True,
             is_shared_instance_path=True,
-            instance_relative_path=False)
+            instance_relative_path=False,
+            image_type='fake')
         drvr.rollback_live_migration_at_destination("context", "instance", [],
                                                     None, True, migrate_data)
         mock_destroy.assert_called_once_with("context", "instance", [],
@@ -8490,6 +8492,7 @@ class LibvirtConnTestCase(test.NoDBTestCase):
             "instance_relative_path": "foo",
             "is_shared_block_storage": False,
             "is_shared_instance_path": False,
+            "image_type": "fake",
         }
         result = drvr.pre_live_migration(
             c, instance, vol, nw_info, None,
@@ -8526,6 +8529,7 @@ class LibvirtConnTestCase(test.NoDBTestCase):
         migrate_data.is_shared_block_storage = False
         migrate_data.block_migration = True
         migrate_data.instance_relative_path = 'foo'
+        migrate_data.image_type = 'fake'
         src = "%s:%s/disk.config" % (instance.host, fake_instance_path)
 
         result = drvr.pre_live_migration(
@@ -8564,7 +8568,8 @@ class LibvirtConnTestCase(test.NoDBTestCase):
             {'is_shared_instance_path': False,
              'is_shared_block_storage': False,
              'block_migration': False,
-             'instance_relative_path': 'foo'})
+             'instance_relative_path': 'foo',
+             'image_type': 'fake'})
         res_data = res_data.to_legacy_dict(pre_migration_result=True)
         block_device_info_get_mapping.assert_called_once_with(
             {'block_device_mapping': [
@@ -8749,7 +8754,8 @@ class LibvirtConnTestCase(test.NoDBTestCase):
         migrate_data = {'is_shared_block_storage': False,
                         'is_shared_instance_path': False,
                         'block_migration': False,
-                        'instance_relative_path': 'foo'}
+                        'instance_relative_path': 'foo',
+                        'image_type': 'fake'}
 
         drvr = libvirt_driver.LibvirtDriver(fake.FakeVirtAPI(), False)
         instance = objects.Instance(**self.test_instance)
@@ -8787,7 +8793,8 @@ class LibvirtConnTestCase(test.NoDBTestCase):
         migrate_data = {'is_shared_block_storage': False,
                         'is_shared_instance_path': False,
                         'block_migration': True,
-                        'instance_relative_path': '/some/path/'}
+                        'instance_relative_path': '/some/path/',
+                        'image_type': 'fake'}
         disk_info = [{'disk_size': 5368709120, 'type': 'raw',
                       'virt_disk_size': 5368709120,
                       'path': '/some/path/disk',
@@ -8863,6 +8870,7 @@ class LibvirtConnTestCase(test.NoDBTestCase):
         self.mox.StubOutWithMock(utils, "execute")
         utils.execute('env', 'LC_ALL=C', 'LANG=C', 'qemu-img', 'info',
                       '/test/disk.local', prlimit = images.QEMU_IMG_LIMITS,
+                      run_as_root=True,
                       ).AndReturn((ret, ''))
 
         self.mox.ReplayAll()
@@ -8972,6 +8980,7 @@ class LibvirtConnTestCase(test.NoDBTestCase):
         self.mox.StubOutWithMock(utils, "execute")
         utils.execute('env', 'LC_ALL=C', 'LANG=C', 'qemu-img', 'info',
                       '/test/disk.local', prlimit = images.QEMU_IMG_LIMITS,
+                      run_as_root=True,
                       ).AndReturn((ret, ''))
 
         self.mox.ReplayAll()

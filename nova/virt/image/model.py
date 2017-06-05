@@ -112,7 +112,7 @@ class RBDImage(Image):
     """
 
     def __init__(self, name, pool, user, password, servers):
-        """Create a new RBD image object
+        """Create a new  image object
 
         :param name: name of the image relative to the pool
         :param pool: name of the pool holding the image
@@ -127,3 +127,24 @@ class RBDImage(Image):
         self.user = user
         self.password = password
         self.servers = servers
+
+
+class USSVDImage(Image):
+    """Class for images that are volumes on a remote
+    ussvd server
+    """
+
+    def __init__(self, name, path, tp):
+        """Create a new ussvd image object
+
+        :param name: name of the image relative to the pool
+        :param pool: name of the pool holding the image
+        :param user: username to authenticate as
+        :param password: credentials for authenticating with
+        :param servers: list of hostnames for the server
+        """
+        super(RBDImage, self).__init__(FORMAT_RAW)
+
+        self.name = name
+        self.path = path
+        self.type = tp
