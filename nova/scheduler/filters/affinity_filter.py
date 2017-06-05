@@ -18,6 +18,8 @@
 import netaddr
 from oslo_log import log as logging
 
+from nova import availability_zones
+from nova import context
 from nova.scheduler import filters
 from nova.scheduler.filters import utils
 
@@ -132,3 +134,38 @@ class ServerGroupAffinityFilter(_GroupAffinityFilter):
     def __init__(self):
         self.policy_name = 'affinity'
         super(ServerGroupAffinityFilter, self).__init__()
+
+
+class _GroupZoneAntiAffinityFilter(filters.BaseHostFilter):
+    """Schedule the instance on a different zone from a set of group
+    hosts.
+    """
+    def host_passes(self, host_state, spec_obj):
+        # Only invoke the filter is 'anti-affinity-zone' is configured
+        policies = (spec_obj.instance_group.policies
+                    if spec_obj.instance_group else [])
+        if self.policy_name not in policies:
+            return True
+
+        group_hosts = (spec_obj.instance_group.hosts
+                       if spec_obj.instance_group else [])
+        LOG.debug("Group anti affinity zone: check if %(host)s not "
+                    "in %(configured)s", {'host': host_state.host,
+                                           'configured': group_hosts})
+        if group_hosts:
+            context_admin = context.get_admin_context()
+            group_hosts_zones = set(
+                [availability_zones.get_host_availability_zone(
+                context_admin, host) for host in group_hosts if host])
+            host_state_zone = availability_zones.get_host_availability_zone(
+                context_admin, host_state.host)
+            return host_state_zone not in group_hosts_zones
+
+        # No groups configured
+        return True
+
+
+class ServerGroupZoneAntiAffinityFilter(_GroupZoneAntiAffinityFilter):
+    def __init__(self):
+        self.policy_name = 'zone-anti-affinity'
+        super(ServerGroupZoneAntiAffinityFilter, self).__init__()

@@ -266,6 +266,7 @@ def validate_weigher(weigher):
 
 _SUPPORTS_AFFINITY = None
 _SUPPORTS_ANTI_AFFINITY = None
+_SUPPORTS_ZONE_ANTI_AFFINITY = None
 _SUPPORTS_SOFT_AFFINITY = None
 _SUPPORTS_SOFT_ANTI_AFFINITY = None
 
@@ -288,6 +289,10 @@ def _get_group_details(context, instance_uuid, user_group_hosts=None):
     if _SUPPORTS_ANTI_AFFINITY is None:
         _SUPPORTS_ANTI_AFFINITY = validate_filter(
             'ServerGroupAntiAffinityFilter')
+    global _SUPPORTS_ZONE_ANTI_AFFINITY
+    if _SUPPORTS_ZONE_ANTI_AFFINITY is None:
+        _SUPPORTS_ZONE_ANTI_AFFINITY = validate_filter(
+            'ServerGroupZoneAntiAffinityFilter')
     global _SUPPORTS_SOFT_AFFINITY
     if _SUPPORTS_SOFT_AFFINITY is None:
         _SUPPORTS_SOFT_AFFINITY = validate_weigher(
@@ -307,8 +312,8 @@ def _get_group_details(context, instance_uuid, user_group_hosts=None):
     except exception.InstanceGroupNotFound:
         return
 
-    policies = set(('anti-affinity', 'affinity', 'soft-affinity',
-                    'soft-anti-affinity'))
+    policies = set(('anti-affinity', 'affinity', 'zone-anti-affinity',
+                    'soft-affinity', 'soft-anti-affinity'))
     if any((policy in policies) for policy in group.policies):
         if not _SUPPORTS_AFFINITY and 'affinity' in group.policies:
             msg = _("ServerGroupAffinityFilter not configured")
@@ -316,6 +321,11 @@ def _get_group_details(context, instance_uuid, user_group_hosts=None):
             raise exception.UnsupportedPolicyException(reason=msg)
         if not _SUPPORTS_ANTI_AFFINITY and 'anti-affinity' in group.policies:
             msg = _("ServerGroupAntiAffinityFilter not configured")
+            LOG.error(msg)
+            raise exception.UnsupportedPolicyException(reason=msg)
+        if not _SUPPORTS_ZONE_ANTI_AFFINITY and 'zone-anti-affinity' \
+                in group.policies:
+            msg = _("ServerGroupZoneAntiAffinityFilter not configured")
             LOG.error(msg)
             raise exception.UnsupportedPolicyException(reason=msg)
         if (not _SUPPORTS_SOFT_AFFINITY
