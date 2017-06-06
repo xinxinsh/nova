@@ -138,6 +138,12 @@ class ServerGroupController(wsgi.Controller):
     def create(self, req, body):
         """Creates a new server group."""
         context = _authorize_context(req)
+        vals = body['server_group']
+
+        """Admin Creates a new server group."""
+        project_id = vals.get('project_id')
+        if project_id:
+            context.project_id = project_id
 
         quotas = objects.Quotas(context=context)
         try:
@@ -147,7 +153,7 @@ class ServerGroupController(wsgi.Controller):
             msg = _("Quota exceeded, too many server groups.")
             raise exc.HTTPForbidden(explanation=msg)
 
-        vals = body['server_group']
+        # vals = body['server_group']
         sg = objects.InstanceGroup(context)
         sg.project_id = context.project_id
         sg.user_id = context.user_id

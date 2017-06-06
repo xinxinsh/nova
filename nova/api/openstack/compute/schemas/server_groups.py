@@ -31,7 +31,8 @@ create = {
                                         'zone-anti-affinity']}],
                     'uniqueItems': True,
                     'additionalItems': False,
-                }
+                },
+                'project_id': parameter_types.project_id
             },
             'required': ['name', 'policies'],
             'additionalProperties': False,
