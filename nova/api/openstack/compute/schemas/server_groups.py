@@ -27,7 +27,8 @@ create = {
                 'name': parameter_types.name,
                 'policies': {
                     'type': 'array',
-                    'items': [{'enum': ['anti-affinity', 'affinity']}],
+                    'items': [{'enum': ['anti-affinity', 'affinity',
+                                        'zone-anti-affinity']}],
                     'uniqueItems': True,
                     'additionalItems': False,
                 }
