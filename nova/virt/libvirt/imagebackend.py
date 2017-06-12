@@ -931,10 +931,15 @@ class Rbd(Image):
                                  servers)
 
     def import_file(self, instance, local_file, remote_name):
-        name = '%s_%s' % (instance.uuid, remote_name)
-        if self.check_image_exists():
-            self.driver.remove_image(name)
-        self.driver.import_image(local_file, name)
+        try:
+            name = '%s_%s' % (instance.uuid, remote_name)
+            if self.check_image_exists():
+                self.driver.remove_image(name)
+            self.driver.import_image(local_file, name)
+        except Exception as e:
+            LOG.error(_LE("import_file error %s"), str(e))
+            LOG.info(_LI("Chinac ignore this error"))
+            pass
 
     def create_snap(self, name):
         return self.driver.create_snap(self.rbd_name, name)
