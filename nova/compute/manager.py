@@ -939,6 +939,8 @@ class ComputeManager(manager.Manager):
         self._clean_instance_console_tokens(context, instance)
         self._delete_scheduler_instance_info(context, instance.uuid)
 
+        self._resource_statistics_about_instance(context, instance, 'delete')
+
     def _create_reservations(self, context, instance, project_id, user_id):
         vcpus = instance.vcpus
         mem_mb = instance.memory_mb
@@ -1834,6 +1836,11 @@ class ComputeManager(manager.Manager):
             system_metadata=system_metadata,
             extra_usage_info=extra_usage_info, fault=fault)
 
+    def _resource_statistics_about_instance(self, context, instance,
+                                            event_suffix):
+        compute_utils.resource_statistics_about_instance(
+            self.resource_notifier, context, instance, event_suffix)
+
     def _deallocate_network(self, context, instance,
                             requested_networks=None):
         LOG.debug('Deallocating network for instance', instance=instance)
@@ -2163,6 +2170,8 @@ class ComputeManager(manager.Manager):
         self._notify_about_instance_usage(context, instance, 'create.end',
                 extra_usage_info={'message': _('Success')},
                 network_info=network_info)
+
+        self._resource_statistics_about_instance(context, instance, 'create')
 
     @contextlib.contextmanager
     def _build_resources(self, context, instance, requested_networks,
@@ -3608,6 +3617,8 @@ class ComputeManager(manager.Manager):
                 network_info=network_info)
 
             quotas.commit()
+            self._resource_statistics_about_instance(context, instance,
+                                                     'resize')
 
     @wrap_exception()
     @reverts_task_state
@@ -5361,7 +5372,10 @@ class ComputeManager(manager.Manager):
         if new_flavor:
             self._set_instance_info(instance, new_flavor)
             instance.save()
-        return self.driver.cpu_hotplug(instance, cpu_num)
+        cpu_data = self.driver.cpu_hotplug(instance, cpu_num)
+        self._resource_statistics_about_instance(context, instance,
+                                                 'cpu_hotplug')
+        return cpu_data
 
     @object_compat
     @wrap_exception()
@@ -5467,10 +5481,13 @@ class ComputeManager(manager.Manager):
             self._set_instance_info(instance, new_flavor)
             instance.save()
         image_meta = objects.ImageMeta.from_instance(instance)
-        return self.driver.attach_mem(instance, image_meta,
-                                      target_size, target_node,
-                                      source_pagesize,
-                                      source_nodemask)
+        new_last_dev = self.driver.attach_mem(instance, image_meta,
+                                              target_size, target_node,
+                                              source_pagesize,
+                                              source_nodemask)
+        self._resource_statistics_about_instance(context, instance,
+                                                 'mem_hotplug')
+        return new_last_dev
 
     @object_compat
     @wrap_exception()

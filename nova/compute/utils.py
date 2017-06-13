@@ -16,11 +16,13 @@
 
 import itertools
 import string
+import time
 import traceback
 
 import netifaces
 from oslo_config import cfg
 from oslo_log import log
+from oslo_utils import uuidutils
 import six
 
 from nova import block_device
@@ -290,6 +292,83 @@ def notify_about_instance_usage(notifier, context, instance, event_suffix,
         method = notifier.info
 
     method(context, 'compute.instance.%s' % event_suffix, usage_info)
+
+
+def resource_statistics_about_instance(resource_notifier,
+                                       context, instance,
+                                       event_suffix):
+    """Send a resource_statistics about an instance to mu."""
+
+    resource_events = {
+        'uuid': uuidutils.generate_uuid(),
+        'desc': 'compute.instance.%s' % event_suffix,
+        'time': time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+        'target': instance.uuid,
+        'target_display_name': instance.display_name,
+        'target_type': 'instance',
+        'provider': None,
+        'tenant': instance.project_id,
+        'region': None
+    }
+
+    if event_suffix == 'create':
+        resource_events['resources'] = [
+            {
+                'type': 'vCPU',
+                'usage': instance.vcpus
+            },
+            {
+                'type': 'memory',
+                'usage': instance.memory_mb
+            },
+            {
+                'type': 'disk',
+                'usage': instance.root_gb
+            }
+        ]
+    elif event_suffix == 'delete':
+        resource_events['resources'] = [
+            {
+                'type': 'vCPU',
+                'usage': 0
+            },
+            {
+                'type': 'memory',
+                'usage': 0
+            },
+            {
+                'type': 'disk',
+                'usage': 0
+            }
+        ]
+    elif event_suffix == 'resize':
+        resource_events['resources'] = [
+            {
+                'type': 'vCPU',
+                'usage': instance.vcpus
+            },
+            {
+                'type': 'memory',
+                'usage': instance.memory_mb
+            }
+        ]
+    elif event_suffix == 'cpu_hotplug':
+        resource_events['resources'] = [
+            {
+                'type': 'vCPU',
+                'usage': instance.vcpus
+            }
+        ]
+    elif event_suffix == 'mem_hotplug':
+        resource_events['resources'] = [
+            {
+                'type': 'memory',
+                'usage': instance.memory_mb
+            }
+        ]
+
+    resource_notifier.info(context, 'compute.instance.%s' % event_suffix,
+                           resource_events)
 
 
 def notify_about_server_group_update(context, event_suffix, sg_payload):

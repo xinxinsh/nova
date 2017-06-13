@@ -55,6 +55,7 @@ from oslo_config import cfg
 from oslo_service import periodic_task
 
 from nova.db import base
+from nova import resource_rpc
 from nova import rpc
 
 
@@ -76,6 +77,10 @@ class Manager(base.Base, PeriodicTasks):
         self.backdoor_port = None
         self.service_name = service_name
         self.notifier = rpc.get_notifier(self.service_name, self.host)
+        if not resource_rpc.initialized():
+            resource_rpc.init(CONF)
+        self.resource_notifier = resource_rpc.get_notifier(self.service_name,
+                                                           self.host)
         self.additional_endpoints = []
         super(Manager, self).__init__(db_driver)
 

@@ -24,6 +24,7 @@ from nova.common import config
 from nova.db.sqlalchemy import api as sqlalchemy_api
 from nova import debugger
 from nova import paths
+from nova import resource_rpc
 from nova import rpc
 from nova import version
 
@@ -66,6 +67,7 @@ def parse_args(argv, default_config_files=None, configure_db=True,
 
     if init_rpc:
         rpc.init(CONF)
+        resource_rpc.init(CONF)
 
     if configure_db:
         sqlalchemy_api.configure(CONF)
