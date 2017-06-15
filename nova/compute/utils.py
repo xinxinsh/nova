@@ -319,7 +319,7 @@ def resource_statistics_about_instance(resource_notifier,
             },
             {
                 'type': 'memory',
-                'usage': instance.memory_mb
+                'usage': instance.memory_mb / 1024.0
             },
             {
                 'type': 'disk',
@@ -349,7 +349,7 @@ def resource_statistics_about_instance(resource_notifier,
             },
             {
                 'type': 'memory',
-                'usage': instance.memory_mb
+                'usage': instance.memory_mb / 1024.0
             }
         ]
     elif event_suffix == 'cpu_hotplug':
@@ -363,7 +363,7 @@ def resource_statistics_about_instance(resource_notifier,
         resource_events['resources'] = [
             {
                 'type': 'memory',
-                'usage': instance.memory_mb
+                'usage': instance.memory_mb / 1024.0
             }
         ]
 
