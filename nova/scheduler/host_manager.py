@@ -536,8 +536,15 @@ class HostManager(object):
                 _match_forced_nodes(name_to_cls_map, force_nodes)
             if force_hosts or force_nodes:
                 # NOTE(deva): Skip filters when forcing host or node
+                # Chinac change this flow for forcing host
+                # but also need pass filter
                 if name_to_cls_map:
-                    return name_to_cls_map.values()
+                    hosts = six.itervalues(name_to_cls_map)
+                    LOG.info("Chinac LOG force host need pass filter %s",
+                             str(hosts))
+                    return self.filter_handler.get_filtered_objects(filters,
+                            hosts, spec_obj, index)
+                    # return name_to_cls_map.values()
                 else:
                     return []
             hosts = six.itervalues(name_to_cls_map)

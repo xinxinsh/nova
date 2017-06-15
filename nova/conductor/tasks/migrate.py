@@ -11,7 +11,6 @@
 #    under the License.
 
 from nova.conductor.tasks import base
-from nova import exception
 from nova import objects
 from nova.scheduler import utils as scheduler_utils
 
@@ -55,10 +54,6 @@ class MigrationTask(base.TaskBase):
         else:
             hosts = self.scheduler_client.select_destinations(
                 self.context, spec_obj)
-
-        if int(self.flavor.memory_mb) > int(hosts[0]['free_ram_mb']):
-            msg = "No valid host found for resize to force_host"
-            raise exception.NoValidHost(reason=msg)
 
         host_state = hosts[0]
 
