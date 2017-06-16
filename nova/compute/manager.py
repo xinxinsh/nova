@@ -2967,8 +2967,21 @@ class ComputeManager(manager.Manager):
         def detach_block_devices(context, bdms):
             for bdm in bdms:
                 if bdm.is_volume:
+                    terminate = True
+                    if recreate:
+                        try:
+                            connection_info = bdm.get('connection_info')
+                            connection_info = jsonutils.loads(connection_info)
+                            d_v_type = connection_info['driver_volume_type']
+                        except Exception as e:
+                            LOG.exception(e)
+                            d_v_type = ''
+                        if d_v_type == 'ussvd':
+                            terminate = False
+                        LOG.debug("driver_volume_type: %s", d_v_type)
                     self._detach_volume(context, bdm.volume_id, instance,
-                                        destroy_bdm=False)
+                                        destroy_bdm=False,
+                                        terminate=terminate)
 
         files = self._decode_files(injected_files)
 
@@ -4988,7 +5001,8 @@ class ComputeManager(manager.Manager):
                 self.volume_api.roll_detaching(context, volume_id)
 
     def _detach_volume(self, context, volume_id, instance, destroy_bdm=True,
-                       attachment_id=None):
+                       attachment_id=None,
+                       terminate=True):
         """Detach a volume from an instance.
 
         :param context: security context
@@ -5088,7 +5102,8 @@ class ComputeManager(manager.Manager):
                            'schost': stashed_connector.get('host')})
                 connector = stashed_connector
 
-        self.volume_api.terminate_connection(context, volume_id, connector)
+        if terminate:
+            self.volume_api.terminate_connection(context, volume_id, connector)
 
         if destroy_bdm:
             bdm.destroy()
