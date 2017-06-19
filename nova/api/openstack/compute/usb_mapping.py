@@ -373,7 +373,7 @@ class UsbMappingController(wsgi.Controller):
                     usb_pid,
                     usb_port,
                     "False")
-                eventlet.sleep(2)
+                eventlet.sleep(3)
 
             # check the USB status in real time
             usb_info = self._get_usb(context, src_host_name, usb_vid, usb_pid)
@@ -396,7 +396,7 @@ class UsbMappingController(wsgi.Controller):
                     usb_pid,
                     usb_port,
                     "True")
-                eventlet.sleep(3)
+                eventlet.sleep(5)
 
     def usb_mounted(self, req, body):
         """Mount the usb device to the local instance"""
@@ -414,10 +414,6 @@ class UsbMappingController(wsgi.Controller):
         if not src_host_name:
             msg = _("'src_host_name' must be specified")
             raise exc.HTTPUnprocessableEntity(explanation=msg)
-
-        dst_host_name = usb_mounted.get("dst_host_name")
-        if not dst_host_name:
-            dst_host_name = src_host_name
 
         usb_vid = usb_mounted.get("usb_vid")
         if not usb_vid:
@@ -443,19 +439,27 @@ class UsbMappingController(wsgi.Controller):
                                        context,
                                        instance_id)
 
+        dst_host_name = instance.host
+        if dst_host_name != src_host_name:
+            msg = (_("usb device:%(src)s and instance:%(dst)s must in the "
+                     "same host") %
+                   {'src': src_host_name, 'dst': dst_host_name})
+            raise exc.HTTPNotFound(explanation=msg)
+
         if(instance['vm_state'] != vm_states.ACTIVE
            or instance['power_state'] != power_state.RUNNING
            or instance['task_state'] is not None):
             raise exception.InstanceNotReady(instance_id=instance['uuid'])
-
-        self._check_usb_dynamically(context, src_host_name,
-                                    dst_host_name, usb_vid, usb_pid)
 
         # set usb auto mapping if vm not in src_host
         auto_mapping = usb_mounted.get("auto_map", True)
         if auto_mapping and mounted == "True":
             self._usb_auto_mapping(req, context, instance, usb_mounted)
             dst_host_name = instance.host
+
+        self._check_usb_dynamically(context, src_host_name,
+                                    dst_host_name, usb_vid, usb_pid)
+
         self.compute_api.usb_mounted(context,
                                      instance,
                                      dst_host_name,
@@ -463,7 +467,7 @@ class UsbMappingController(wsgi.Controller):
                                      usb_pid,
                                      mounted)
 
-        detach_type = usb_mounted.get("detach_type", "auto")
+        # detach_type = usb_mounted.get("detach_type", "auto")
 
         usb_port = None
         hosts = self._get_hosts(context)
@@ -499,13 +503,13 @@ class UsbMappingController(wsgi.Controller):
                 usb_mount.mounted = True
                 usb_mount.save()
             else:
-                if detach_type != "auto":
-                    usb_mount.instance_id = None
-                    usb_mount.mounted = False
-                    usb_mount.save()
-                else:
-                    usb_mount.is_auto = True
-                    usb_mount.save()
+                # if detach_type != "auto":
+                usb_mount.instance_id = None
+                usb_mount.mounted = False
+                usb_mount.save()
+                # else:
+                #     usb_mount.is_auto = True
+                #     usb_mount.save()
 
         return webob.Response(status_int=200)
 

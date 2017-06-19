@@ -6301,7 +6301,7 @@ class ComputeManager(manager.Manager):
                                             db_usb.usb_pid,
                                             db_usb.usb_port,
                                             "False")
-                                        time.sleep(2)
+                                        time.sleep(3)
 
                                     # check the USB status in real time
                                     usb_list = \
@@ -6334,17 +6334,29 @@ class ComputeManager(manager.Manager):
                                             db_usb.usb_pid,
                                             db_usb.usb_port,
                                             "True")
-                                        time.sleep(3)
+                                        time.sleep(5)
                                 except Exception:
                                     pass
                         try:
+                            usb_iserial = None
+                            usb_pid_info = db_usb.usb_pid.split(':')
+                            usb_pid = usb_pid_info[0]
+                            if len(usb_pid_info) == 2:
+                                usb_iserial = usb_pid_info[1]
+
                             # check usb device if in this compute node
                             usb_exist_flag = False
-                            usb_id = db_usb.usb_vid + ':' + db_usb.usb_pid
+                            usb_id = db_usb.usb_vid + ':' + usb_pid
                             try:
                                 out, err = utils.execute('lsusb')
                                 if usb_id in out:
-                                    usb_exist_flag = True
+                                    if usb_iserial:
+                                        out_iserial, err = \
+                                            utils.execute('usbsrv', '-l')
+                                        if usb_iserial in out_iserial:
+                                            usb_exist_flag = True
+                                    else:
+                                        usb_exist_flag = True
                             except Exception:
                                 LOG.error(_('lsusb error'))
                             if not usb_exist_flag:

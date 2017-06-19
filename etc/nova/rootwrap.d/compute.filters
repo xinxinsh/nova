@@ -252,3 +252,12 @@ touch: CommandFilter, touch, root
 
 # nova/virt/libvirt/utils.py:
 rm: CommandFilter, rm, root
+
+# nova/virt/libvirt/utils.py:
+usbclnt: CommandFilter, usbclnt, root
+
+# nova/virt/libvirt/utils.py:
+usbsrv: CommandFilter, usbsrv, root
+
+# nova/virt/libvirt/utils.py:
+lsusb: CommandFilter, lsusb, root

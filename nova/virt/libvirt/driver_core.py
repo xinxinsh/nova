@@ -513,7 +513,8 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
     def _check_usbclient_list(self, usb_name):
 
         try:
-            out, err = libvirt_utils.execute('usbclnt', '-l')
+            out, err = libvirt_utils.execute('usbclnt', '-l',
+                                             run_as_root=True)
             if err:
                 msg = _('usbclnt: usbclnt -l error \nError:%s') % err
                 raise exception.NovaException(msg)
@@ -530,10 +531,45 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
 
         return False
 
+    def get_usb_iserial(self, usb_vid, usb_pid, usb_name):
+        try:
+            out, err = libvirt_utils.execute('lsusb | grep %s:%s' %
+                                             (usb_vid, usb_pid), shell=True,
+                                             run_as_root=True)
+            if err:
+                msg = (_('Get usb %(usb_vid)s:%(usb_pid)s iSerial error') %
+                       {'usb_vid': usb_vid, 'usb_pid': usb_pid})
+                raise exception.NovaException(msg)
+
+            for line in out.splitlines():
+                if 'Bus' in line and 'Device' in line:
+                    info = line.split(':')[0].split(' ')
+                    if len(info) == 4:
+                        bus = info[1]
+                        device = info[3]
+                        out_iSerial, err = \
+                            libvirt_utils.execute('lsusb -D '
+                                                  '/dev/bus/usb/%s/%s '
+                                                  '| grep iSerial'
+                                                  % (bus, device),
+                                                  shell=True,
+                                                  run_as_root=True)
+                        iSerial_info = \
+                            out_iSerial.strip().replace('  ', '').split(' ')
+                        if len(iSerial_info) == 3 \
+                                and iSerial_info[2] in usb_name:
+                            return iSerial_info[2], bus, device
+        except Exception:
+            msg = (_('Get usb %(usb_vid)s:%(usb_pid)s iSerial error') %
+                   {'usb_vid': usb_vid, 'usb_pid': usb_pid})
+            raise exception.NovaException(msg)
+
+        return None, None, None
+
     def get_usb_host_list(self, context):
 
         try:
-            out, err = libvirt_utils.execute('usbsrv', '-l')
+            out, err = libvirt_utils.execute('usbsrv', '-l', run_as_root=True)
             if err:
                 msg = _('usbsrv: get_usb_host_list error \nError:%s') % err
                 raise exception.NovaException(msg)
@@ -554,7 +590,7 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
                 usb_device = {}
 
                 if self._check_usbclient_list(
-                        output[output_num].split(': ')[1].strip()):
+                        output[output_num].lstrip()[3:].strip()):
                     continue
 
                 usb_device['usb_name'] = \
@@ -564,6 +600,14 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
                 usb_device['usb_vid'] = usb_info[1]
                 usb_device['usb_pid'] = usb_info[3]
                 usb_device['usb_port'] = usb_info[5]
+
+                usb_iserial, bus, device = self.get_usb_iserial(
+                    usb_device['usb_vid'],
+                    usb_device['usb_pid'],
+                    usb_device['usb_name'])
+                if usb_iserial:
+                    usb_device['usb_pid'] = usb_device['usb_pid'] + ':' \
+                                            + usb_iserial
 
                 if 'in use by' in output[output_num + 2]:
                     host_ip = output[output_num + 2].split()[4].strip()
@@ -582,6 +626,10 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
 
     def usb_shared(self, context, usb_vid, usb_pid, usb_port, shared):
 
+        usb_pid_info = usb_pid.split(':')
+        if len(usb_pid_info) == 2:
+            usb_pid = usb_pid_info[0]
+
         if shared == "True":
             shared_flag = '-s'
         else:
@@ -592,7 +640,8 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
                                              shared_flag,
                                              '-vid', usb_vid,
                                              '-pid', usb_pid,
-                                             '-usbport', usb_port)
+                                             '-usbport', usb_port,
+                                             run_as_root=True)
             if err:
                 msg = _('usbsrv: set shared error \nError:%s') % err
                 raise exception.NovaException(msg)
@@ -602,6 +651,12 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
 
     def usb_mapped(self, context, src_host_name, usb_vid, usb_pid,
                    usb_port, mapped):
+
+        usb_iserial = None
+        usb_pid_info = usb_pid.split(':')
+        if len(usb_pid_info) == 2:
+            usb_pid = usb_pid_info[0]
+            usb_iserial = usb_pid_info[1]
 
         src_host_ip = socket.gethostbyname(src_host_name)
         if not src_host_ip:
@@ -614,13 +669,16 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
             mapped_flag = '-connect'
 
             try:
-                out, err = libvirt_utils.execute('usbclnt',
-                                                 '-a',
-                                                 server_address)
-                if err:
-                    msg = _('usbclnt: usbclnt add usbserver error'
-                            ' \nError:%s') % err
-                    raise exception.NovaException(msg)
+                out_clnt, err = libvirt_utils.execute('usbclnt', '-l')
+                if server_address not in out_clnt:
+                    out, err = libvirt_utils.execute('usbclnt',
+                                                     '-a',
+                                                     server_address,
+                                                     run_as_root=True)
+                    if err:
+                        msg = _('usbclnt: usbclnt add usbserver error'
+                                ' \nError:%s') % err
+                        raise exception.NovaException(msg)
             except Exception:
                 msg = _('usbsrv -a error')
                 raise exception.NovaException(msg)
@@ -631,12 +689,21 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
             mapped_flag = '-disconnect'
 
         try:
-            out, err = libvirt_utils.execute('usbclnt',
-                                             mapped_flag,
-                                             '-server', server_address,
-                                             '-vid', usb_vid,
-                                             '-pid', usb_pid,
-                                             '-usbport', usb_port)
+            if mapped_flag == '-connect':
+                out_check, err = libvirt_utils.execute('usbsrv', '-l')
+                if 'Vid: %s' % usb_vid in out_check \
+                        and 'Pid: %s' % usb_pid in out_check:
+                    if usb_iserial:
+                        if usb_iserial in out_check:
+                            return
+                    else:
+                        return
+
+            cmd = 'usbclnt %s -server %s -vid %s -pid %s -usbport %s' % \
+                  (mapped_flag, server_address, usb_vid, usb_pid, usb_port)
+            out, err = libvirt_utils.execute(cmd,
+                                             shell=True,
+                                             run_as_root=True)
             if err:
                 msg = _('usbclnt: usb mapped error \nError:%s') % err
                 raise exception.NovaException(msg)
@@ -644,7 +711,7 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
             msg = _('usbclnt error')
             raise exception.NovaException(msg)
 
-    def _check_usb_xml(self, virt_dom, usb_vid, usb_pid):
+    def _check_usb_xml(self, virt_dom, usb_vid, usb_pid, usb_iserial=None):
 
         try:
             xml = virt_dom.XMLDesc(0)
@@ -654,10 +721,22 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
                 if hostdev.get("type") == "usb":
                     vendor = hostdev.find("./source/vendor")
                     product = hostdev.find("./source/product")
+                    address = hostdev.find("./source/address")
 
                     if(usb_vid in vendor.get("id")
                        and usb_pid in product.get("id")):
-                        return True
+                        usb_bus = address.get("bus")
+                        usb_device = address.get("device")
+
+                        if usb_iserial:
+                            iserial, bus, device = self.get_usb_iserial(
+                                usb_vid,
+                                usb_pid,
+                                usb_iserial)
+                            if usb_bus in bus and usb_device in device:
+                                return True
+                        else:
+                            return True
         except libvirt.libvirtError as e:
             msg = _('get usb xml error: %s') % e
             raise exception.NovaException(msg)
@@ -666,14 +745,33 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
 
     def usb_mounted(self, context, instance, usb_vid, usb_pid, mounted):
 
-        usb_xml = '''
-        <hostdev mode='subsystem' type='usb' managed='yes'>
-            <source>
-                <vendor id='0x%s'/>
-                <product id='0x%s'/>
-            </source>
-        </hostdev>
-        ''' % (usb_vid, usb_pid)
+        usb_iserial = None
+        usb_pid_info = usb_pid.split(':')
+        if len(usb_pid_info) == 2:
+            usb_pid = usb_pid_info[0]
+            usb_iserial, bus, device = self.get_usb_iserial(
+                usb_vid,
+                usb_pid,
+                usb_pid_info[1])
+
+            usb_xml = '''
+            <hostdev mode='subsystem' type='usb' managed='yes'>
+                <source>
+                    <vendor id='0x%s'/>
+                    <product id='0x%s'/>
+                    <address bus='%s' device='%s'/>
+                </source>
+            </hostdev>
+            ''' % (usb_vid, usb_pid, bus, device)
+        else:
+            usb_xml = '''
+            <hostdev mode='subsystem' type='usb' managed='yes'>
+                <source>
+                    <vendor id='0x%s'/>
+                    <product id='0x%s'/>
+                </source>
+            </hostdev>
+            ''' % (usb_vid, usb_pid)
 
         try:
             virt_dom = self._lookup_by_name(instance['name'])
@@ -681,7 +779,8 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
             raise exception.InstanceNotRunning(instance_id=instance['uuid'])
 
         if mounted == 'True':
-            if not self._check_usb_xml(virt_dom, usb_vid, usb_pid):
+            if not self._check_usb_xml(virt_dom, usb_vid,
+                                       usb_pid, usb_iserial):
                 try:
                     virt_dom.attachDevice(usb_xml)
                 except libvirt.libvirtError as e:
@@ -696,19 +795,31 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
 
     def usb_status(self, context, instance, usb_vid, usb_pid):
 
+        usb_iserial = None
+        usb_pid_info = usb_pid.split(':')
+        if len(usb_pid_info) == 2:
+            usb_pid = usb_pid_info[0]
+            usb_iserial = usb_pid_info[1]
+
         try:
             virt_dom = self._lookup_by_name(instance['name'])
         except exception.InstanceNotFound:
             raise exception.InstanceNotRunning(instance_id=instance['uuid'])
 
-        return self._check_usb_xml(virt_dom, usb_vid, usb_pid)
+        return self._check_usb_xml(virt_dom, usb_vid, usb_pid, usb_iserial)
 
     def get_usb_vm_status(self, context, usb_vid, usb_pid):
+
+        usb_iserial = None
+        usb_pid_info = usb_pid.split(':')
+        if len(usb_pid_info) == 2:
+            usb_pid = usb_pid_info[0]
+            usb_iserial = usb_pid_info[1]
 
         vm_uuid = ''
         virt_doms = self._conn.listAllDomains()
         for virt_dom in virt_doms:
-            if self._check_usb_xml(virt_dom, usb_vid, usb_pid):
+            if self._check_usb_xml(virt_dom, usb_vid, usb_pid, usb_iserial):
                 vm_uuid = virt_dom.UUIDString()
 
         return vm_uuid
