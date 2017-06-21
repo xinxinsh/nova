@@ -917,6 +917,7 @@ def compute_node_statistics(context):
                              func.sum(models.ComputeNode.disk_available_least),
                          ), read_deleted="no").\
                          filter(models.Service.disabled == false()).\
+                         filter(models.Service.deleted == 0).\
                          filter(models.Service.binary == "nova-compute").\
                          filter(_filter).\
                          first()
