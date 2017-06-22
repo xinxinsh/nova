@@ -58,7 +58,8 @@ def qemu_img_info(path, format=None):
         cmd = ('env', 'LC_ALL=C', 'LANG=C', 'qemu-img', 'info', path)
         if format is not None:
             cmd = cmd + ('-f', format)
-        out, err = utils.execute(*cmd, prlimit=QEMU_IMG_LIMITS)
+        out, err = utils.execute(*cmd, prlimit=QEMU_IMG_LIMITS,
+                                 run_as_root=True)
     except processutils.ProcessExecutionError as exp:
         msg = (_("qemu-img failed to execute on %(path)s : %(exp)s") %
                 {'path': path, 'exp': exp})

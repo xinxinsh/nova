@@ -175,6 +175,9 @@ mkfs: CommandFilter, mkfs, root
 # nova/virt/libvirt/utils.py: 'qemu-img'
 qemu-img: CommandFilter, qemu-img, root
 
+# qemu-img info
+qemu-img-info: EnvFilter, env, root, LC_ALL=, LANG=, qemu-img
+
 # nova/virt/disk/vfs/localfs.py: 'readlink', '-e'
 readlink: CommandFilter, readlink, root
 
