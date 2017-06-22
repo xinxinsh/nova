@@ -2516,7 +2516,8 @@ class ComputeTestCase(BaseTestCase):
             # Verify volumes to be detached without destroying
             mock_detach.assert_called_once_with(self.context,
                                                 bdms[0].volume_id,
-                                                instance, destroy_bdm=False)
+                                                instance, destroy_bdm=False,
+                                                terminate=True)
 
         self.stubs.Set(self.compute.driver, 'rebuild', fake)
         instance = self._create_fake_instance_obj()
