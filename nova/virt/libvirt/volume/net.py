@@ -78,7 +78,7 @@ class LibvirtNetVolumeDriver(libvirt_volume.LibvirtBaseVolumeDriver):
             if CONF.libvirt.rbd_user:
                 conf.auth_username = CONF.libvirt.rbd_user
         if conf.source_protocol == 'rbd':
-            conf.rbd_ceph_config = netdisk_properties.get('rbd_ceph_config',
+            conf.rbd_ceph_config = netdisk_properties.get('rbd_ceph_conf',
                                                           None)
 
         if conf.source_protocol == 'iscsi':
