@@ -1020,6 +1020,57 @@ class Rbd(Image):
         return ('rbd://%(fsid)s/%(pool)s/%(image)s/snap' %
                 dict(fsid=fsid, pool=parent_pool, image=image_id))
 
+    def direct_snapshot_create_snap(self, context, snapshot_name, image_format,
+                        image_id, base_image_id):
+        """Creates an RBD snapshot directly.
+        """
+        # fsid = self.driver.get_fsid()
+        # NOTE(nic): Nova has zero comprehension of how Glance's image store
+        # is configured, but we can infer what storage pool Glance is using
+        # by looking at the parent image.  If using authx, write access should
+        # be enabled on that pool for the Nova user
+        # parent_pool = self._get_parent_pool(context, base_image_id, fsid)
+
+        # Snapshot the disk and clone it into Glance's storage pool.  librbd
+        # requires that snapshots be set to "protected" in order to clone them
+        self.driver.create_snap(self.rbd_name, snapshot_name, protect=True)
+
+    def direct_snapshot_flatten(self, context, snapshot_name, image_format,
+                        image_id, base_image_id):
+        """Creates an RBD snapshot directly.
+        """
+        fsid = self.driver.get_fsid()
+        # NOTE(nic): Nova has zero comprehension of how Glance's image store
+        # is configured, but we can infer what storage pool Glance is using
+        # by looking at the parent image.  If using authx, write access should
+        # be enabled on that pool for the Nova user
+        parent_pool = self._get_parent_pool(context, base_image_id, fsid)
+
+        # Snapshot the disk and clone it into Glance's storage pool.  librbd
+        # requires that snapshots be set to "protected" in order to clone them
+        # self.driver.create_snap(self.rbd_name, snapshot_name, protect=True)
+        location = {'url': 'rbd://%(fsid)s/%(pool)s/%(image)s/%(snap)s' %
+                           dict(fsid=fsid,
+                                pool=self.pool,
+                                image=self.rbd_name,
+                                snap=snapshot_name)}
+        try:
+            self.driver.clone(location, image_id, dest_pool=parent_pool)
+            # Flatten the image, which detaches it from the source snapshot
+            self.driver.flatten(image_id, pool=parent_pool)
+        finally:
+            # all done with the source snapshot, clean it up
+            self.cleanup_direct_snapshot(location)
+
+        # Glance makes a protected snapshot called 'snap' on uploaded
+        # images and hands it out, so we'll do that too.  The name of
+        # the snapshot doesn't really matter, this just uses what the
+        # glance-store rbd backend sets (which is not configurable).
+        self.driver.create_snap(image_id, 'snap', pool=parent_pool,
+                                protect=True)
+        return ('rbd://%(fsid)s/%(pool)s/%(image)s/snap' %
+                dict(fsid=fsid, pool=parent_pool, image=image_id))
+
     def cleanup_direct_snapshot(self, location, also_destroy_volume=False,
                                 ignore_errors=False):
         """Unprotects and destroys the name snapshot.
