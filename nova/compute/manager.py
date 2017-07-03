@@ -939,7 +939,10 @@ class ComputeManager(manager.Manager):
         self._clean_instance_console_tokens(context, instance)
         self._delete_scheduler_instance_info(context, instance.uuid)
 
-        self._resource_statistics_about_instance(context, instance, 'delete')
+        if 'metadata' in instance and \
+                        'belong_to' not in instance.metadata:
+            self._resource_statistics_about_instance(context, instance,
+                                                     'delete')
 
     def _create_reservations(self, context, instance, project_id, user_id):
         vcpus = instance.vcpus
@@ -2171,7 +2174,10 @@ class ComputeManager(manager.Manager):
                 extra_usage_info={'message': _('Success')},
                 network_info=network_info)
 
-        self._resource_statistics_about_instance(context, instance, 'create')
+        if 'metadata' in instance and \
+                        'belong_to' not in instance.metadata:
+            self._resource_statistics_about_instance(context, instance,
+                                                     'create')
 
     @contextlib.contextmanager
     def _build_resources(self, context, instance, requested_networks,
@@ -3630,8 +3636,11 @@ class ComputeManager(manager.Manager):
                 network_info=network_info)
 
             quotas.commit()
-            self._resource_statistics_about_instance(context, instance,
-                                                     'resize')
+            if 'metadata' in instance and \
+                            'belong_to' not in instance.metadata:
+                self._resource_statistics_about_instance(context,
+                                                         instance,
+                                                         'resize')
 
     @wrap_exception()
     @reverts_task_state
