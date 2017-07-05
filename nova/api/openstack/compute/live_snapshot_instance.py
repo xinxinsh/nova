@@ -173,10 +173,10 @@ class LiveSnapshotInstanceController(wsgi.Controller):
             context, instance.uuid)
 
         try:
-            if instance['vm_state'] == 'stopped':
-                memory_snapshot = False
-            else:
-                memory_snapshot = True
+            # if instance['vm_state'] == 'stopped':
+            #    memory_snapshot = False
+            # else:
+            #    memory_snapshot = True
             if self.compute_api.is_volume_backed_instance(context,
                                                           instance,
                                                           bdms):
@@ -190,7 +190,7 @@ class LiveSnapshotInstanceController(wsgi.Controller):
                 display_name,
                 volume_snapshot_list,
                 extra_properties=props,
-                memory_snapshot=memory_snapshot,
+                memory_snapshot=False,
                 image_system=image_system)
 
         except exception.Invalid as err:
