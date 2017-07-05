@@ -1930,11 +1930,22 @@ class LibvirtDriver(driver.ComputeDriver):
         try:
             update_task_state(task_state=task_states.IMAGE_UPLOADING,
                               expected_state=task_states.IMAGE_PENDING_UPLOAD)
-            metadata['location'] = snapshot_backend.direct_snapshot(
-                context, snapshot_name, image_format, image_id,
-                instance.image_ref)
-            self._snapshot_domain(context, live_snapshot, virt_dom, state,
-                                  instance)
+            if source_type == 'rbd':
+                snapshot_backend.direct_snapshot_create_snap(
+                    context, snapshot_name, image_format, image_id,
+                    instance.image_ref)
+                self._snapshot_domain(context, live_snapshot, virt_dom, state,
+                                      instance)
+                metadata['location'] = snapshot_backend.\
+                    direct_snapshot_flatten(
+                    context, snapshot_name, image_format, image_id,
+                    instance.image_ref)
+            else:
+                metadata['location'] = snapshot_backend.direct_snapshot(
+                    context, snapshot_name, image_format, image_id,
+                    instance.image_ref)
+                self._snapshot_domain(context, live_snapshot, virt_dom, state,
+                                      instance)
             self._image_api.update(context, image_id, metadata,
                                    purge_props=False)
         except (NotImplementedError, exception.ImageUnacceptable,
