@@ -28,7 +28,8 @@ ALIAS = "os-admin-actions"
 # States usable in resetState action
 # NOTE: It is necessary to update the schema of nova/api/openstack/compute/
 # schemas/reset_server_state.py, when updating this state_map.
-state_map = dict(active=vm_states.ACTIVE, error=vm_states.ERROR)
+state_map = dict(active=vm_states.ACTIVE, error=vm_states.ERROR,
+                 modifing=vm_states.MODIFING, previous='previous')
 
 authorize = extensions.os_compute_authorizer(ALIAS)
 
@@ -81,6 +82,24 @@ class AdminActionsController(wsgi.Controller):
         state = state_map[body["os-resetState"]["state"]]
 
         instance = common.get_instance(self.compute_api, context, id)
+        if state == vm_states.MODIFING:
+            if instance.vm_state not in (vm_states.ACTIVE, vm_states.STOPPED):
+                reason = 'current state is not ACTIVE or STOPPED'
+                raise exc.HTTPConflict(explanation=reason)
+            instance.vm_previous_state = instance.vm_state
+            instance.vm_state = state
+            instance.save(admin_state_reset=True)
+            return
+
+        if state == 'previous':
+            if instance.vm_state != vm_states.MODIFING:
+                reason = 'current state is not modifing'
+                raise exc.HTTPConflict(explanation=reason)
+            instance.vm_state = instance.vm_previous_state
+            instance.vm_previous_state = None
+            instance.save(admin_state_reset=True)
+            return
+
         instance.vm_state = state
         instance.task_state = None
         instance.save(admin_state_reset=True)
