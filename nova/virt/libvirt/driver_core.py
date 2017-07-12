@@ -601,6 +601,10 @@ class LibvirtDriverCore(virt_driver.ComputeDriver):
                 usb_device['usb_pid'] = usb_info[3]
                 usb_device['usb_port'] = usb_info[5]
 
+                if usb_device['usb_vid'] == '0557' \
+                        and usb_device['usb_pid'] == '2419':
+                    continue
+
                 usb_iserial, bus, device = self.get_usb_iserial(
                     usb_device['usb_vid'],
                     usb_device['usb_pid'],
