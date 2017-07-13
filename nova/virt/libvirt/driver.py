@@ -8423,6 +8423,9 @@ class LibvirtDriver(driver.ComputeDriver):
                              'Error: %(error)s'),
                          {'i_name': guest.name,
                           'error': e})
+            except KeyError:
+                LOG.error(_LE("Instance:%s only exists in the virsh but "
+                              "not in database"), dom.UUIDString())
             # NOTE(gtt116): give other tasks a chance.
             greenthread.sleep(0)
         return disk_over_committed_size
