@@ -8130,3 +8130,8 @@ class ComputeManager(manager.Manager):
     @wrap_exception()
     def rename_instance(self, context, instance, update_dict):
         self.driver.rename_instance(context, instance, update_dict)
+
+    @wrap_exception()
+    @wrap_instance_fault
+    def initialize_connection(self, context, instance):
+        return self.driver.initialize_connection(context, instance)

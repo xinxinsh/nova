@@ -2354,6 +2354,13 @@ class API(base.Base):
 
         return image_meta
 
+    def initialize_connection(self, context, instance):
+        """
+        :param instance: nova.objects.instance.Instance object
+        :returns: Connection info of root disk
+        """
+        return self.compute_rpcapi.initialize_connection(context, instance)
+
     def _create_image(self, context, instance, name, image_type,
                       extra_properties=None):
         """Create new image entry in the image service.  This new image

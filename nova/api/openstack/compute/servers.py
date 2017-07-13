@@ -444,6 +444,19 @@ class ServersController(wsgi.Controller):
         req.cache_db_instance(instance)
         return instance
 
+    @extensions.expected_errors((400, 403))
+    def disk(self, req, id):
+        """Returns connnection info of root disk."""
+        context = req.environ['nova.context']
+        authorize(context, action="disk")
+        try:
+            instance = self._get_server(context, req, id)
+            info = self.compute_api.initialize_connection(context, instance)
+        except exception.Invalid as err:
+            raise exc.HTTPBadRequest(explanation=err.format_message())
+        return info
+
+
     def _get_requested_networks(self, requested_networks):
         """Create a list of requested networks from the networks attribute."""
         networks = []
