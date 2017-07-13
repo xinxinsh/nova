@@ -371,6 +371,22 @@ def resource_statistics_about_instance(resource_notifier,
                            resource_events)
 
 
+def resource_statistics_for_floatingip(resource_notifier, context, fip,
+                                       out_bandwidth):
+    data = {'uuid': uuidutils.generate_uuid(),
+            'desc': 'network.qos.bind',
+            'time': time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+            'target': fip.get('id'),
+            'target_display_name': fip.get('floating_ip_address'),
+            'target_type': 'floatingip',
+            'resources': [{'type': 'bandwidth',
+                           'usage': out_bandwidth}],
+            'tenant': fip.get('tenant_id'),
+            'provider': None,
+            'region': None}
+    resource_notifier.info(context, 'network.qos.bind', data)
+
+
 def notify_about_server_group_update(context, event_suffix, sg_payload):
     """Send a notification about server group update.
 

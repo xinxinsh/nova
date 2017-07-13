@@ -221,6 +221,7 @@ class LegacyValidatingNotifier(object):
         'compute.instance.resize',
         'compute.instance.cpu_hotplug',
         'compute.instance.mem_hotplug',
+        'network.qos.bind'
     ]
 
     message = _('%(event_type)s is not a versioned notification and not '

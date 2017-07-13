@@ -8019,6 +8019,12 @@ class ComputeManager(manager.Manager):
 
         self.driver.set_interface_bandwidth(
             instance, condemned, inbound_kilo_bytes, outbound_kilo_bytes)
+        # Statistics bandwidth for floating ip.
+        fip = self.network_api.get_floating_ip_by_port(context, port_id)
+        if fip:
+            rate = round(int(outbound_kilo_bytes) / 1000.0, 2)
+            compute_utils.resource_statistics_for_floatingip(
+                self.resource_notifier, context, fip, rate)
 
     # (zhouxj)obscure check for pass through dict argument, still not clear
     # the reason why chinac pep8/flake8 weird check logic

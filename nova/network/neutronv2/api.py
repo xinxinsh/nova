@@ -1508,6 +1508,13 @@ class API(base_api.NetworkAPI):
         port_dict = self._setup_port_dict(context, client, fip['port_id'])
         return self._format_floating_ip_model(fip, pool_dict, port_dict)
 
+    def get_floating_ip_by_port(self, context, port_id):
+        """Return a floating IP given an port_id."""
+        client = get_client(context)
+        fips = self._safe_get_floating_ips(client, fixed_port_id=port_id)
+        if len(fips) == 1:
+            return fips[0]
+
     def get_floating_ips_by_project(self, context):
         client = get_client(context)
         project_id = context.project_id
