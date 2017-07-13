@@ -80,12 +80,19 @@ class AggregateInstanceExtraSpecsFilter(filters.BaseHostFilter):
                and len(extra_spec) == 3):
                 return check_host_metata_for_custom(host_state)
 
-        if 'flavor_type' in extra_spec.keys() and len(extra_spec) == 1:
+        if 'hw:vif_multiqueue_enabled' in extra_spec.keys() \
+                and len(extra_spec) == 1:
             return check_host_metata_for_custom(host_state)
 
         if 'flavor_type' in extra_spec.keys() \
-                and 'hw:cpu_max_sockets' in extra_spec.keys() \
+                and 'hw:vif_multiqueue_enabled' in extra_spec.keys() \
                 and len(extra_spec) == 2:
+            return check_host_metata_for_custom(host_state)
+
+        if 'flavor_type' in extra_spec.keys() \
+                and 'hw:vif_multiqueue_enabled' in extra_spec.keys() \
+                and 'hw:cpu_max_sockets' in extra_spec.keys() \
+                and len(extra_spec) == 3:
             return check_host_metata_for_custom(host_state)
 
         metadata = utils.aggregate_metadata_get_by_host(host_state)
