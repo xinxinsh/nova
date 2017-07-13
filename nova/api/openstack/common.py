@@ -89,6 +89,9 @@ _STATE_MAP = {
         task_states.REBUILD_BLOCK_DEVICE_MAPPING: 'REBUILD',
         task_states.REBUILD_SPAWNING: 'REBUILD',
     },
+    vm_states.MODIFING: {
+        'default': 'MODIFING',
+    },
     vm_states.RESIZED: {
         'default': 'VERIFY_RESIZE',
         # Note(maoy): the OS API spec 1.1 doesn't have CONFIRMING_RESIZE

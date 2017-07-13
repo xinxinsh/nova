@@ -61,3 +61,5 @@ ALLOW_RESOURCE_REMOVAL = [DELETED, SHELVED_OFFLOADED]
 
 # Quiesce instance
 FROZEN = 'frozen'
+
+MODIFING = 'modifing'

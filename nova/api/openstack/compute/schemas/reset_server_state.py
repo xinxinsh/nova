@@ -20,7 +20,7 @@ reset_state = {
             'properties': {
                 'state': {
                     'type': 'string',
-                    'enum': ['active', 'error'],
+                    'enum': ['active', 'error', 'modifing', 'previous'],
                 },
             },
             'required': ['state'],

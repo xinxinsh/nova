@@ -107,6 +107,7 @@ class Instance(base.NovaPersistentObject, base.NovaObject,
 
         'power_state': fields.IntegerField(nullable=True),
         'vm_state': fields.StringField(nullable=True),
+        'vm_previous_state': fields.StringField(nullable=True),
         'task_state': fields.StringField(nullable=True),
 
         'services': fields.ObjectField('ServiceList'),

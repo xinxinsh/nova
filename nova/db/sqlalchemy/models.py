@@ -260,6 +260,7 @@ class Instance(BASE, NovaBase, models.SoftDeleteMixin):
 
     power_state = Column(Integer)
     vm_state = Column(String(255))
+    vm_previous_state = Column(String(255))
     task_state = Column(String(255))
 
     memory_mb = Column(Integer)
