@@ -541,3 +541,53 @@ def is_mounted(mount_path, source=None):
 
 def is_valid_hostname(hostname):
     return re.match(r"^[\w\-\.:]+$", hostname)
+
+
+def initialize_connection(virt_dom):
+    """Return connnection inof of root disk"""
+    xml_desc = virt_dom.XMLDesc(0)
+    domain = etree.fromstring(xml_desc)
+    os_type = domain.find('os/type').text
+    if CONF.libvirt.images_type == 'rbd' and (CONF.libvirt.virt_type != 'lxc'
+        or (CONF.libvirt.virt_type != 'parallels' or os_type != vm_mode.EXE)):
+        disk = domain.find('devices/disk')
+
+        source = disk.find('source')
+        disk_path = source.get('file') or source.get('dev')
+        disk_path = source.get('name')
+        mons = []
+        ports = []
+        for host in source.findall('host'):
+            mons.append(host.get('name'))
+            ports.append(host.get('port'))
+        auth = disk.find('auth')
+        rbd_user = auth.get('username')
+        sercret_uuid = auth.find('secret').get('uuid')
+        sercret_type = auth.find('secret').get('type')
+        keyring_path = ("/etc/ceph/%s.client.%s.keyring" %
+                                ("ceph", CONF.libvirt.rbd_user))
+        with open(keyring_path, 'r') as keyring_file:
+            keyring = keyring_file.read()
+        data = {
+            'driver_volume_type': 'rbd',
+            'data': {
+                'name': disk_path,
+                'hosts': mons,
+                'ports': ports,
+                'cluster_name': 'ceph',
+                'auth_enabled': (rbd_user is not None),
+                'auth_username': rbd_user,
+                'secret_type': sercret_type,
+                'secret_uuid': sercret_uuid,
+                'keyring': keyring
+            }
+        }
+
+    else:
+        data = {}
+
+    if not data:
+        raise RuntimeError(_("Can't retrieve root device path "
+                             "from instance libvirt configuration"
+                             "current only support RBD"))
+    return data

@@ -1376,3 +1376,10 @@ class ComputeAPI(object):
         cctxt.cast(ctxt, 'rename_instance',
                    instance=instance,
                    update_dict=update_dict)
+
+    def initialize_connection(self, ctxt, instance):
+        version = '4.0'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                                    version=version)
+        cctxt.cast(ctxt, 'initialize_connection',
+                   instance=instance)

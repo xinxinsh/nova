@@ -9649,3 +9649,18 @@ class LibvirtDriver(driver.ComputeDriver):
 
     def image_rollback(self, context, instance, image_meta):
         self._core.image_rollback(context, instance, image_meta)
+
+    def initialize_connection(self, context, instance):
+        """return connection info of instance's root disk"""
+        try:
+            guest = self._host.get_guest(instance)
+            virt_dom = guest._domain
+        except exception.InstanceNotFound:
+            raise exception.InstanceNotRunning(instance_id=instance.uuid)
+
+        info = libvirt_utils.initialize_connection(virt_dom)
+
+        if not info:
+            raise RuntimeError(_('Unknown image_type=%s') %
+            CONF.libvirt.images_type)
+        return info
