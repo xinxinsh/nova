@@ -1859,8 +1859,12 @@ class LibvirtDriver(driver.ComputeDriver):
         image_format = CONF.libvirt.snapshot_image_format or source_type
 
         # NOTE(bfilippov): save lvm and rbd as raw
-        if image_format == 'lvm' or image_format == 'rbd':
+        if ((image_format == 'lvm' and CONF.libvirt.images_type != 'ussvd')
+                or image_format == 'rbd'):
             image_format = 'raw'
+        elif CONF.libvirt.images_type == 'ussvd' and image_format == 'lvm':
+            image_format = 'qcow2'
+            source_type = 'ussvd'
 
         metadata = self._create_snapshot_metadata(instance.image_meta,
                                                   instance,
@@ -1940,6 +1944,10 @@ class LibvirtDriver(driver.ComputeDriver):
                     direct_snapshot_flatten(
                     context, snapshot_name, image_format, image_id,
                     instance.image_ref)
+            elif (CONF.libvirt.images_type == 'ussvd' and not live_snapshot and
+                    state == power_state.RUNNING):
+                raise NotImplementedError("ussvd snapshot suspend "
+                                           "vm is not implemented")
             else:
                 metadata['location'] = snapshot_backend.direct_snapshot(
                     context, snapshot_name, image_format, image_id,
@@ -1963,7 +1971,8 @@ class LibvirtDriver(driver.ComputeDriver):
                               expected_state=task_states.IMAGE_UPLOADING)
 
             # TODO(nic): possibly abstract this out to the snapshot_backend
-            if source_type == 'rbd' and live_snapshot:
+            if ((source_type == 'rbd' or source_type == 'ussvd') and
+                    live_snapshot):
                 # Standard snapshot uses qemu-img convert from RBD which is
                 # not safe to run with live_snapshot.
                 live_snapshot = False

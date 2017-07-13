@@ -22,6 +22,7 @@ import os
 import shutil
 import six
 import socket
+import uuid
 
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -1231,22 +1232,29 @@ class Ussvd(Image):
         :is_block_dev:
         """
         super(Ussvd, self).__init__('block', 'qcow2', True)
-        if path:
-            self.path = path
-            self.lv = os.path.split(self.path)[-1]
-            self.vg = CONF.libvirt.vgname
-        else:
-            if not CONF.libvirt.vgname:
-                raise RuntimeError(_('You should specify'
-                                     ' vgname'
-                                     ' flag to use ussvd images.'))
-            self.vg = CONF.libvirt.vgname
-            self.lv = '%s_%s' % (instance.uuid,
-                                 self.escape(disk_name))
-            self.path = os.path.join('/dev', self.vg, self.lv)
+        if not CONF.libvirt.vgname:
+            raise RuntimeError(_('You should specify'
+                                 ' vgname flag to use ussvd images.'))
+        self.vg = CONF.libvirt.vgname
         self.client = USSVDClient()
         self.datastore = {'type': 'lvm', 'path': self.vg}
         self.server = socket.gethostname()
+        if path:
+            self.path = path
+            lv = path.split('/')[-1]
+            vol_name = self.client.get_volume_name_by_lvname(self.server,
+                                                             self.datastore,
+                                                             lv)
+            self.lv = vol_name
+        else:
+            try:
+                self.lv = '%s_%s' % (instance.uuid,
+                                     self.escape(disk_name))
+                self.path = self.active_image()
+            except ussvd_exception.ResourceNotExist:
+                LOG.info(_LI("%s not exist, we may in the create process") %
+                         self.lv)
+                self.path = os.path.join('/dev', self.vg, self.lv)
 
     def _supports_encryption(self):
         """Used to test that the backend supports encryption.
@@ -1261,9 +1269,9 @@ class Ussvd(Image):
         return size << 30
 
     def active_image(self):
-        self.client.active_volume(self.server,
-                                  self.datastore,
-                                  self.lv)
+        return self.client.active_volume(self.server,
+                                         self.datastore,
+                                         self.lv)
 
     def deactive_image(self):
         self.client.deactive_volume(self.server,
@@ -1322,15 +1330,12 @@ class Ussvd(Image):
             self.client.show_volume(self.server,
                                     self.datastore,
                                     self.lv)
-        except ussvd_exception.LVNotExist:
+        except ussvd_exception.ResourceNotExist:
             return False
         return True
 
     def _can_fallocate(self):
         return False
-
-    def snapshot_extract(self, target, out_format):
-        images.convert_image(self.path, target, 'qcow2', out_format)
 
     def _get_driver_format(self):
         return self.driver_format
@@ -1446,3 +1451,50 @@ class Ussvd(Image):
         :returns: an instance of nova.virt.image.model.Image
         """
         return imgmodel.USSVDImage(self.lv, self.vg, self.datastore['type'])
+
+    def direct_snapshot(self, context, snapshot_name, image_format,
+                        image_id, base_image_id):
+        """Creates an RBD snapshot directly.
+        """
+        try:
+            location = None
+            self.client.create_snapshot(self.server, self.datastore,
+                                        self.lv, snapshot_name, 0,
+                                        True)
+            location = {'url': 'ussv://%s/%s/%s' % (self.vg, self.lv,
+                                                     snapshot_name)}
+            disk_sz = self.get_disk_size(self.path)
+            sz_in_GB = self._B2GB(disk_sz)
+            self.client.create_volume(self.server, self.datastore,
+                                      image_id, sz_in_GB, 0, 'qcow2',
+                                      snapshot_name,
+                                      True)
+            new_snap_name = str(uuid.uuid4())
+            self.client.create_snapshot(self.server, self.datastore,
+                                        image_id, new_snap_name, 0,
+                                        False)
+            return 'ussv://%s/%s/%s' % (self.vg, image_id, new_snap_name)
+        except Exception as e:
+            LOG.exception("direct snapshot failed: %s" % str(e))
+            raise exception.ImageUnacceptable(image_id=image_id, reason=str(e))
+        finally:
+            self.cleanup_direct_snapshot(location)
+
+    def cleanup_direct_snapshot(self, location, also_destroy_volume=False,
+                                ignore_errors=False):
+        if location:
+            vg, image, snapshot = self.parse_uri(location['url'])
+            self.client.delete_snapshot(self.server, self.datastore,
+                                        image, snapshot, True)
+            if also_destroy_volume:
+                self.client.delete_volume(self.server, self.datastore,
+                                          image)
+
+    def snapshot_extract(self, target, out_format):
+        images.convert_image(self.path, target, 'qcow2', out_format,
+                             run_as_root=True)
+        # as ussvd backend image only support GB unit we have to truncate file
+        target_size = os.path.getsize(target)
+        size_in_GB = self._B2GB(target_size)
+        command = ('truncate', target, '-s', '%sG' % size_in_GB)
+        utils.execute(*command, run_as_root=True)

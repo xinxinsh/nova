@@ -264,3 +264,6 @@ usbsrv: CommandFilter, usbsrv, root
 
 # nova/virt/libvirt/utils.py:
 lsusb: CommandFilter, lsusb, root
+
+# nova/virt/libvirt/imagebackend.py:
+truncate: CommandFilter, truncate, root
