@@ -7952,14 +7952,6 @@ class ComputeManager(manager.Manager):
                 if self._check_available_status(context, source_volume_id):
                     self.volume_api.snapshot_rollback(context,
                                                       disk_snapshot_id)
-                    if self._check_available_status(context, source_volume_id):
-                        LOG.debug('attach volume(%s) to instance(%s)',
-                                  source_volume_id,
-                                  instance.uuid)
-                        self.compute_api.attach_volume(context,
-                                                       instance,
-                                                       source_volume_id,
-                                                       device_name)
             # rollback vm from image
             if source_image_id and disk_snapshot_id:
                 self.compute_api.image_rollback(context, instance,
@@ -7971,6 +7963,37 @@ class ComputeManager(manager.Manager):
 
         if not is_rollback_memory and auto_start:
             self.compute_api.start(context, instance)
+
+        # Wait for instance to become ready
+        starttime = time.time()
+        deadline = starttime + 300
+        instance = objects.Instance.get_by_uuid(
+            context, instance.uuid, expected_attrs=[])
+        while instance.vm_state != 'active':
+            now = time.time()
+            if now > deadline:
+                msg = _("timeout start instance")
+                raise exception.NovaException(reason=msg)
+            else:
+                time.sleep(2)
+            instance = objects.Instance.get_by_uuid(
+                context, instance.uuid, expected_attrs=[])
+
+        for disk in rollback_snapshot_list:
+            disk_snapshot_id = disk.get('disk_snapshot_id')
+            device_name = disk.get('device_name')
+            source_volume_id = disk.get('source_volume_id')
+            source_image_id = disk.get('source_image_id')
+            # attach volume
+            if source_volume_id and disk_snapshot_id:
+                if self._check_available_status(context, source_volume_id):
+                    LOG.debug('attach volume(%s) to instance(%s)',
+                              source_volume_id,
+                              instance.uuid)
+                    self.compute_api.attach_volume(context,
+                                                   instance,
+                                                   source_volume_id,
+                                                   device_name)
 
     def _check_available_status(self, context, volume_id,
                                 check_status='available',
