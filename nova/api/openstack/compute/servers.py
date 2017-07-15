@@ -1521,7 +1521,7 @@ class Servers(extensions.V21APIExtensionBase):
     version = 1
 
     def get_resources(self):
-        member_actions = {'action': 'POST'}
+        member_actions = {'action': 'POST', 'disk': 'GET'}
         collection_actions = {'detail': 'GET'}
         resources = [
             extensions.ResourceExtension(
