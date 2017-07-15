@@ -1381,5 +1381,5 @@ class ComputeAPI(object):
         version = '4.0'
         cctxt = self.client.prepare(server=_compute_host(None, instance),
                                     version=version)
-        cctxt.cast(ctxt, 'initialize_connection',
+        return cctxt.call(ctxt, 'initialize_connection',
                    instance=instance)
