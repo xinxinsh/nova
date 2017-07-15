@@ -554,8 +554,8 @@ def initialize_connection(virt_dom):
 
         source = disk.find('source')
         disk_path = source.get('file') or source.get('dev')
-        #if not disk_path and CONF.libvirt.images_type == 'rbd':
-        disk_path = source.get('name')
+        if not disk_path and CONF.libvirt.images_type == 'rbd':
+            disk_path = source.get('name')
         mons = []
         ports = []
         for host in source.findall('host'):
