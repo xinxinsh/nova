@@ -480,6 +480,8 @@ class RealRolePolicyTestCase(test.NoDBTestCase):
 "os_compute_api:servers:revert_resize",
 "os_compute_api:servers:show",
 "os_compute_api:servers:update",
+"os_compute_api:servers:disk",
+"os_compute_api:servers:update_task",
 "compute_extension:attach_interfaces",
 "compute_extension:certificates",
 "compute_extension:console_output",
