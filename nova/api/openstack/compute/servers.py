@@ -1246,6 +1246,27 @@ class ServersController(wsgi.Controller):
 
     @wsgi.response(202)
     @extensions.expected_errors((400, 403, 404, 409))
+    @wsgi.action('updateTask')
+    def _action_update_task_state(self, req, id, body):
+        """
+        Update Instance Task State
+        """
+        context = req.environ('nova.context')
+        authorize(context, action='update_task')
+        entity = body["updateTask"]
+        taskstate = {}
+
+        instance = self._get_server(context, req, id)
+        if 'state' in entity:
+            taskstate["task_state"] = entity['state']
+        if 'expected_state' in entity:
+            expected_state = entity["expected_state"]
+
+        instance.update(taskstate)
+        instance.save(expected_task_state = expected_state)
+
+    @wsgi.response(202)
+    @extensions.expected_errors((400, 403, 404, 409))
     @wsgi.action('createImage')
     @common.check_snapshots_enabled
     @validation.schema(schema_servers.create_image, '2.0', '2.0')
