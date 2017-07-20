@@ -387,9 +387,11 @@ class VolumeAttachmentController(wsgi.Controller):
             _check_request_version(req, '2.20', 'attach_volume',
                                    server_id, instance.vm_state)
 
+        action_result = False
         try:
             device = self.compute_api.attach_volume(context, instance,
                                                     volume_id, device)
+            action_result = True
         except exception.InstanceUnknownCell as e:
             raise exc.HTTPNotFound(explanation=e.format_message())
         except exception.VolumeNotFound as e:
@@ -404,6 +406,10 @@ class VolumeAttachmentController(wsgi.Controller):
         except (exception.InvalidVolume,
                 exception.InvalidDevicePath) as e:
             raise exc.HTTPBadRequest(explanation=e.format_message())
+        finally:
+            if not action_result:
+                self.compute_api.operation_log_about_instance(context,
+                                                              'Failed')
 
         # The attach is async
         attachment = {}
@@ -502,6 +508,7 @@ class VolumeAttachmentController(wsgi.Controller):
         try:
             volume = self.volume_api.get(context, volume_id)
         except exception.VolumeNotFound as e:
+            self.compute_api.operation_log_about_instance(context, 'Failed')
             raise exc.HTTPNotFound(explanation=e.format_message())
 
         bdms = objects.BlockDeviceMappingList.get_by_instance_uuid(
@@ -537,12 +544,15 @@ class VolumeAttachmentController(wsgi.Controller):
                     raise exc.HTTPBadRequest(explanation=e.format_message())
 
         except exception.InstanceIsLocked as e:
+            self.compute_api.operation_log_about_instance(context, 'Failed')
             raise exc.HTTPConflict(explanation=e.format_message())
         except exception.InstanceInvalidState as state_error:
+            self.compute_api.operation_log_about_instance(context, 'Failed')
             common.raise_http_conflict_for_instance_invalid_state(state_error,
                     'detach_volume', server_id)
 
         if not found:
+            self.compute_api.operation_log_about_instance(context, 'Failed')
             msg = _("volume_id not found: %s") % volume_id
             raise exc.HTTPNotFound(explanation=msg)
 

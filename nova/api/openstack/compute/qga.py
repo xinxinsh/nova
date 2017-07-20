@@ -66,7 +66,10 @@ class QgaController(wsgi.Controller):
         try:
             r = self.compute_api.call_qga(context, instance, cmd, async,
                                           timeout)
+            self.compute_api.operation_log_about_instance(context,
+                                                          'Succeeded')
         except exception.QgaExecuteFailure as e:
+            self.compute_api.operation_log_about_instance(context, 'Failed')
             raise exc.HTTPBadRequest(explanation=e.format_message())
 
         return dict(result=r)
@@ -80,7 +83,10 @@ class QgaController(wsgi.Controller):
 
         try:
             r = self.compute_api.get_qga_is_live(context, instance)
+            self.compute_api.operation_log_about_instance(context,
+                                                          'Succeeded')
         except exception.QgaExecuteFailure as e:
+            self.compute_api.operation_log_about_instance(context, 'Failed')
             raise exc.HTTPBadRequest(explanation=e.format_message())
 
         return r
@@ -175,6 +181,7 @@ class GetuptimeController(wsgi.Controller):
             qga_getuptime = body['qgaGetuptime']
             servers = qga_getuptime['servers']
         except Exception as e:
+            self.compute_api.operation_log_about_instance(context, 'Failed')
             raise exc.HTTPBadRequest(explanation=e)
 
         for s in servers:
@@ -207,6 +214,7 @@ class GetuptimeController(wsgi.Controller):
                                           *[context, host, servers_list])
                     rets.append(ret)
         except Exception:
+            self.compute_api.operation_log_about_instance(context, 'Failed')
             msg = _("qga_getuptime action failed")
             raise exc.HTTPUnprocessableEntity(explanation=msg)
 
@@ -228,6 +236,7 @@ class GetuptimeController(wsgi.Controller):
 
         self.pool.waitall()
 
+        self.compute_api.operation_log_about_instance(context, 'Succeeded')
         return {"qgaGetuptime": result}
 
 

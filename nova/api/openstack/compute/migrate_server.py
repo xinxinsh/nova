@@ -87,10 +87,12 @@ class MigrateServerController(wsgi.Controller):
             disk_over_commit = strutils.bool_from_string(disk_over_commit,
                                                          strict=True)
 
+        action_result = False
         try:
             instance = common.get_instance(self.compute_api, context, id)
             self.compute_api.live_migrate(context, instance, block_migration,
                                           disk_over_commit, host)
+            action_result = True
         except exception.InstanceUnknownCell as e:
             raise exc.HTTPNotFound(explanation=e.format_message())
         except (exception.NoValidHost,
@@ -111,6 +113,10 @@ class MigrateServerController(wsgi.Controller):
         except exception.InstanceInvalidState as state_error:
             common.raise_http_conflict_for_instance_invalid_state(state_error,
                     'os-migrateLive', id)
+        finally:
+            if not action_result:
+                self.compute_api.operation_log_about_instance(context,
+                                                              'Failed')
 
 
 class MigrateServer(extensions.V21APIExtensionBase):

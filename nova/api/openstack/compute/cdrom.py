@@ -48,6 +48,7 @@ class CdromController(wsgi.Controller):
             if self.servicegroup_api.service_is_up(s):
                 iso = self.compute_api.get_cdroms(context, s['host'])
                 break
+        self.compute_api.operation_log_about_instance(context, 'Succeeded')
         return dict(isoList=iso)
 
 
@@ -66,6 +67,7 @@ class CdromActionController(wsgi.Controller):
 
         instance = common.get_instance(self.compute_api, context, id)
         mounted = self.compute_api.list_mounted_cdrom(context, instance)
+        self.compute_api.operation_log_about_instance(context, 'Succeeded')
         return dict(mountedIso=mounted)
 
     @wsgi.response(202)
@@ -86,7 +88,9 @@ class CdromActionController(wsgi.Controller):
         instance = common.get_instance(self.compute_api, context, id)
         try:
             self.compute_api.change_cdrom(context, instance, iso_name)
+            self.compute_api.operation_log_about_instance(context, 'Succeeded')
         except exception.NovaException as e:
+            self.compute_api.operation_log_about_instance(context, 'Failed')
             raise exc.HTTPBadRequest(explanation=e.format_message())
         return webob.Response(status_int=202)
 

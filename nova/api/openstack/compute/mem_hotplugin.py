@@ -102,6 +102,7 @@ class MemHotpluginController(wsgi.Controller):
         else:
             target_node = '0'
 
+        action_result = False
         try:
             instance = common.get_instance(self.compute_api,
                                            context, server_id)
@@ -111,6 +112,7 @@ class MemHotpluginController(wsgi.Controller):
                                                      target_node,
                                                      source_pagesize,
                                                      source_nodemask)
+            action_result = True
         except exception.InstanceNotFound:
             msg = _("Server not found")
             raise webob.exc.HTTPNotFound(explanation=msg)
@@ -127,6 +129,10 @@ class MemHotpluginController(wsgi.Controller):
         except exception.InstanceInvalidState as state_error:
             common.raise_http_conflict_for_instance_invalid_state(state_error,
                                                                   'attach_mem')
+        finally:
+            if not action_result:
+                self.compute_api.operation_log_about_instance(context,
+                                                              'Failed')
         try:
             mem_dev = _translate_mem_attachment_view('dimm', alias_name,
                                                      instance['uuid'],

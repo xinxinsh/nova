@@ -100,8 +100,10 @@ class LiveSnapshotInstanceController(wsgi.Controller):
 
         msg = self.compute_api.delete_vm_snapshot(context, id)
         if msg != '':
+            self.compute_api.operation_log_about_instance(context, 'Failed')
             raise exc.HTTPNotFound(explanation=msg)
 
+        self.compute_api.operation_log_about_instance(context, 'Succeeded')
         return webob.Response(status_int=200)
 
     def create(self, req, body):
@@ -194,6 +196,7 @@ class LiveSnapshotInstanceController(wsgi.Controller):
                 image_system=image_system)
 
         except exception.Invalid as err:
+            self.compute_api.operation_log_about_instance(context, 'Failed')
             raise exc.HTTPBadRequest(explanation=err.format_message())
 
         snapshot = {}
