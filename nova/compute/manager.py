@@ -3660,8 +3660,6 @@ class ComputeManager(manager.Manager):
                 self._resource_statistics_about_instance(context,
                                                          instance,
                                                          'resize')
-            self.compute_api.operation_log_about_instance(context,
-                                                          'Succeeded')
 
     @wrap_exception()
     @reverts_task_state
@@ -4152,6 +4150,7 @@ class ComputeManager(manager.Manager):
         self._notify_about_instance_usage(
             context, instance, "finish_resize.end",
             network_info=network_info)
+        self.compute_api.operation_log_about_instance(context, 'Succeeded')
 
     @wrap_exception()
     @reverts_task_state
@@ -4175,6 +4174,7 @@ class ComputeManager(manager.Manager):
                                 disk_info, image_meta)
             quotas.commit()
         except Exception:
+            self.compute_api.operation_log_about_instance(context, 'Failed')
             LOG.exception(_LE('Setting instance vm_state to ERROR'),
                           instance=instance)
             with excutils.save_and_reraise_exception():
