@@ -64,7 +64,6 @@ class BandwidthController(wsgi.Controller):
             inbound_kilo_bytes,
             outbound_kilo_bytes)
 
-        self.compute_api.operation_log_about_instance(context, 'Succeeded')
         return webob.Response(status_int=202)
 
     @wsgi.action('getInterfaceBandwidth')
