@@ -52,7 +52,10 @@ class ISOActionController(wsgi.Controller):
         instance = common.get_instance(self.compute_api, context, id)
         try:
             self.compute_api.change_iso(context, instance, iso)
+            self.compute_api.operation_log_about_instance(context,
+                                                          'Succeeded')
         except exception.NovaException as e:
+            self.compute_api.operation_log_about_instance(context, 'Failed')
             raise exc.HTTPBadRequest(explanation=e.format_message())
         return webob.Response(status_int=202)
 

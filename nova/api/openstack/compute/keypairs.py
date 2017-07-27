@@ -23,6 +23,7 @@ from nova.api.openstack.compute.schemas import keypairs
 from nova.api.openstack import extensions
 from nova.api.openstack import wsgi
 from nova.api import validation
+from nova import compute
 from nova.compute import api as compute_api
 from nova import exception
 from nova.i18n import _
@@ -39,6 +40,7 @@ class KeypairController(wsgi.Controller):
     """Keypair API controller for the OpenStack API."""
     def __init__(self):
         self.api = compute_api.KeypairAPI()
+        self.compute_api = compute.API(skip_policy_check=True)
 
     def _filter_keypair(self, keypair, **attrs):
         # TODO(claudiub): After v2 and v2.1 is no longer supported,
@@ -120,6 +122,7 @@ class KeypairController(wsgi.Controller):
                            target={'user_id': user_id,
                                    'project_id': context.project_id})
 
+        action_result = False
         try:
             if 'public_key' in params:
                 keypair = self.api.import_key_pair(context,
@@ -134,6 +137,9 @@ class KeypairController(wsgi.Controller):
                                                **keypair_filters)
                 keypair['private_key'] = private_key
 
+            action_result = True
+            self.compute_api.operation_log_about_instance(context,
+                                                          'Succeeded')
             return {'keypair': keypair}
 
         except exception.KeypairLimitExceeded:
@@ -143,6 +149,10 @@ class KeypairController(wsgi.Controller):
             raise webob.exc.HTTPBadRequest(explanation=exc.format_message())
         except exception.KeyPairExists as exc:
             raise webob.exc.HTTPConflict(explanation=exc.format_message())
+        finally:
+            if not action_result:
+                self.compute_api.operation_log_about_instance(context,
+                                                              'Failed')
 
     @wsgi.Controller.api_version("2.1", "2.1")
     @wsgi.response(202)
@@ -175,7 +185,10 @@ class KeypairController(wsgi.Controller):
         try:
             self.api.delete_key_pair(context, user_id, id)
         except exception.KeypairNotFound as exc:
+            self.compute_api.operation_log_about_instance(context, 'Failed')
             raise webob.exc.HTTPNotFound(explanation=exc.format_message())
+
+        self.compute_api.operation_log_about_instance(context, 'Succeeded')
 
     def _get_user_id(self, req):
         if 'user_id' in req.GET.keys():

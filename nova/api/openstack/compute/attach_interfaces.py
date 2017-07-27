@@ -114,10 +114,14 @@ class InterfaceAttachmentController(wsgi.Controller):
             msg = _("Must input network_id when request IP address")
             raise exc.HTTPBadRequest(explanation=msg)
 
+        action_result = False
         instance = common.get_instance(self.compute_api, context, server_id)
         try:
             vif = self.compute_api.attach_interface(context,
                 instance, network_id, port_id, req_ip)
+            action_result = True
+            self.compute_api.operation_log_about_instance(context,
+                                                          'Succeeded')
         except (exception.InterfaceAttachFailedNoNetwork,
                 exception.NetworkDuplicated,
                 exception.NetworkAmbiguous,
@@ -139,6 +143,10 @@ class InterfaceAttachmentController(wsgi.Controller):
         except exception.InstanceInvalidState as state_error:
             common.raise_http_conflict_for_instance_invalid_state(state_error,
                     'attach_interface', server_id)
+        finally:
+            if not action_result:
+                self.compute_api.operation_log_about_instance(context,
+                                                              'Failed')
 
         return self.show(req, server_id, vif['id'])
 
@@ -153,10 +161,14 @@ class InterfaceAttachmentController(wsgi.Controller):
         authorize(context)
         port_id = id
 
+        action_result = False
         instance = common.get_instance(self.compute_api, context, server_id)
         try:
             self.compute_api.detach_interface(context,
                 instance, port_id=port_id)
+            action_result = True
+            self.compute_api.operation_log_about_instance(context,
+                                                          'Succeeded')
         except exception.PortNotFound as e:
             raise exc.HTTPNotFound(explanation=e.format_message())
         except exception.InstanceIsLocked as e:
@@ -166,6 +178,10 @@ class InterfaceAttachmentController(wsgi.Controller):
         except exception.InstanceInvalidState as state_error:
             common.raise_http_conflict_for_instance_invalid_state(state_error,
                     'detach_interface', server_id)
+        finally:
+            if not action_result:
+                self.compute_api.operation_log_about_instance(context,
+                                                              'Failed')
 
     def _items(self, req, server_id, entity_maker):
         """Returns a list of attachments, transformed through entity_maker."""
