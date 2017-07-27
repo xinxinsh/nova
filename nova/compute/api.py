@@ -2375,7 +2375,7 @@ class API(base.Base):
         properties.update(extra_properties or {})
 
         image_meta = self._initialize_instance_snapshot_metadata(
-            instance, name, properties)
+            context, instance, name, properties)
         # if we're making a snapshot, omit the disk and container formats,
         # since the image may have been converted to another format, and the
         # original values won't be accurate.  The driver will populate these
@@ -2385,8 +2385,8 @@ class API(base.Base):
             image_meta.pop('container_format', None)
         return self.image_api.create(context, image_meta)
 
-    def _initialize_instance_snapshot_metadata(self, instance, name,
-                                               extra_properties=None):
+    def _initialize_instance_snapshot_metadata(self, context, instance,
+                                               name, extra_properties=None):
         """Initialize new metadata for a snapshot of the given instance.
 
         :param instance: nova.objects.instance.Instance object
@@ -2415,6 +2415,10 @@ class API(base.Base):
         # The properties in extra_properties have precedence
         properties.update(extra_properties or {})
 
+        # admin role create other project resources
+        if context.is_admin:
+            image_meta['owner'] = instance['project_id']
+
         return image_meta
 
     # NOTE(melwitt): We don't check instance lock for snapshot because lock is
@@ -2432,7 +2436,7 @@ class API(base.Base):
         :returns: the new image metadata
         """
         image_meta = self._initialize_instance_snapshot_metadata(
-            instance, name, extra_properties)
+            context, instance, name, extra_properties)
         # the new image is simply a bucket of properties (particularly the
         # block device mapping, kernel and ramdisk IDs) with no image data,
         # hence the zero size
@@ -2517,7 +2521,7 @@ class API(base.Base):
         :returns: the new image metadata
         """
         image_meta = self._initialize_instance_snapshot_metadata(
-            instance, name, extra_properties)
+            context, instance, name, extra_properties)
         # the new image is simply a bucket of properties (particularly the
         # block device mapping, kernel and ramdisk IDs) with no image data,
         # hence the zero size
