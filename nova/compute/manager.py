@@ -2056,6 +2056,7 @@ class ComputeManager(manager.Manager):
             admin_password, requested_networks, security_groups,
             block_device_mapping, node, limits, filter_properties):
 
+        action_result = False
         image_name = image.get('name')
         self._notify_about_instance_usage(context, instance, 'create.start',
                 extra_usage_info={'image_name': image_name})
@@ -2090,6 +2091,7 @@ class ComputeManager(manager.Manager):
                     LOG.info(_LI('Took %0.2f seconds to spawn the instance on '
                                  'the hypervisor.'), timer.elapsed(),
                              instance=instance)
+                    action_result = True
         except (exception.InstanceNotFound,
                 exception.UnexpectedDeletingTaskStateError) as e:
             with excutils.save_and_reraise_exception():
@@ -2139,6 +2141,10 @@ class ComputeManager(manager.Manager):
                     'create.error', fault=e)
             raise exception.RescheduledException(
                     instance_uuid=instance.uuid, reason=six.text_type(e))
+        finally:
+            if not action_result:
+                self.compute_api.operation_log_about_instance(context,
+                                                              'Failed')
 
         # NOTE(alaski): This is only useful during reschedules, remove it now.
         instance.system_metadata.pop('network_allocated', None)
@@ -2178,6 +2184,7 @@ class ComputeManager(manager.Manager):
                         'belong_to' not in instance.metadata:
             self._resource_statistics_about_instance(context, instance,
                                                      'create')
+        self.compute_api.operation_log_about_instance(context, 'Succeeded')
 
     @contextlib.contextmanager
     def _build_resources(self, context, instance, requested_networks,
@@ -3118,6 +3125,7 @@ class ComputeManager(manager.Manager):
                                bad_volumes_callback=bad_volumes_callback)
 
         except Exception as error:
+            self.compute_api.operation_log_about_instance(context, 'Failed')
             with excutils.save_and_reraise_exception() as ctxt:
                 exc_info = sys.exc_info()
                 # if the reboot failed but the VM is running don't
@@ -3148,6 +3156,7 @@ class ComputeManager(manager.Manager):
                         context=context, instance=instance)
 
         self._notify_about_instance_usage(context, instance, "reboot.end")
+        self.compute_api.operation_log_about_instance(context, 'Succeeded')
 
     @delete_image_on_error
     def _do_snapshot_instance(self, context, image_id, instance, rotation):
@@ -3236,6 +3245,8 @@ class ComputeManager(manager.Manager):
 
             self._notify_about_instance_usage(context, instance,
                                               "snapshot.end")
+            self.compute_api.operation_log_about_instance(context,
+                                                          'Succeeded')
         except (exception.InstanceNotFound,
                 exception.UnexpectedDeletingTaskStateError):
             # the instance got deleted during the snapshot
@@ -3250,11 +3261,13 @@ class ComputeManager(manager.Manager):
             except Exception:
                 LOG.warning(_LW("Error while trying to clean up image %s"),
                             image_id, instance=instance)
+            self.compute_api.operation_log_about_instance(context, 'Failed')
         except exception.ImageNotFound:
             instance.task_state = None
             instance.save()
             msg = _LW("Image not found during snapshot")
             LOG.warn(msg, instance=instance)
+            self.compute_api.operation_log_about_instance(context, 'Failed')
 
     def _post_interrupted_snapshot_cleanup(self, context, instance):
         self.driver.post_interrupted_snapshot_cleanup(context, instance)
@@ -3542,6 +3555,8 @@ class ComputeManager(manager.Manager):
                 migration = objects.Migration.get_by_id(
                                     context.elevated(), migration_id)
             except exception.MigrationNotFound:
+                self.compute_api.operation_log_about_instance(context,
+                                                              'Failed')
                 LOG.error(_LE("Migration %s is not found during confirmation"),
                           migration_id, context=context, instance=instance)
                 quotas.rollback()
@@ -3569,6 +3584,8 @@ class ComputeManager(manager.Manager):
                         context, instance.uuid,
                         expected_attrs=expected_attrs)
             except exception.InstanceNotFound:
+                self.compute_api.operation_log_about_instance(context,
+                                                              'Failed')
                 LOG.info(_LI("Instance is not found during confirmation"),
                          context=context, instance=instance)
                 quotas.rollback()
@@ -3641,6 +3658,8 @@ class ComputeManager(manager.Manager):
                 self._resource_statistics_about_instance(context,
                                                          instance,
                                                          'resize')
+            self.compute_api.operation_log_about_instance(context,
+                                                          'Succeeded')
 
     @wrap_exception()
     @reverts_task_state
@@ -4944,6 +4963,8 @@ class ComputeManager(manager.Manager):
             try:
                 return self._attach_volume(context, instance, driver_bdm)
             except Exception:
+                self.compute_api.operation_log_about_instance(context,
+                                                              'Failed')
                 with excutils.save_and_reraise_exception():
                     bdm.destroy()
 
@@ -4974,6 +4995,7 @@ class ComputeManager(manager.Manager):
         info = {'volume_id': bdm.volume_id}
         self._notify_about_instance_usage(
             context, instance, "attach_volume.end", extra_usage_info=info)
+        self.compute_api.operation_log_about_instance(context, 'Succeeded')
 
     def _driver_detach_volume(self, context, instance, bdm, connection_info):
         """Do the actual driver detach using block device mapping."""
@@ -5396,9 +5418,14 @@ class ComputeManager(manager.Manager):
         if new_flavor:
             self._set_instance_info(instance, new_flavor)
             instance.save()
-        cpu_data = self.driver.cpu_hotplug(instance, cpu_num)
+        try:
+            cpu_data = self.driver.cpu_hotplug(instance, cpu_num)
+        except Exception:
+            self.compute_api.operation_log_about_instance(context, 'Failed')
+            raise
         self._resource_statistics_about_instance(context, instance,
                                                  'cpu_hotplug')
+        self.compute_api.operation_log_about_instance(context, 'Succeeded')
         return cpu_data
 
     @object_compat
@@ -5505,12 +5532,17 @@ class ComputeManager(manager.Manager):
             self._set_instance_info(instance, new_flavor)
             instance.save()
         image_meta = objects.ImageMeta.from_instance(instance)
-        new_last_dev = self.driver.attach_mem(instance, image_meta,
-                                              target_size, target_node,
-                                              source_pagesize,
-                                              source_nodemask)
+        try:
+            new_last_dev = self.driver.attach_mem(instance, image_meta,
+                                                  target_size, target_node,
+                                                  source_pagesize,
+                                                  source_nodemask)
+        except Exception:
+            self.compute_api.operation_log_about_instance(context, 'Failed')
+            raise
         self._resource_statistics_about_instance(context, instance,
                                                  'mem_hotplug')
+        self.compute_api.operation_log_about_instance(context, 'Succeeded')
         return new_last_dev
 
     @object_compat
@@ -5809,6 +5841,7 @@ class ComputeManager(manager.Manager):
                 context, instance,
                 block_migration, disk, dest, migrate_data)
         except Exception:
+            self.compute_api.operation_log_about_instance(context, 'Failed')
             with excutils.save_and_reraise_exception():
                 self._notify_about_instance_usage(context, instance,
                                                   'live_migration.error')
@@ -5830,6 +5863,7 @@ class ComputeManager(manager.Manager):
                                        self._rollback_live_migration,
                                        block_migration, migrate_data)
         except Exception:
+            self.compute_api.operation_log_about_instance(context, 'Failed')
             # Executing live migration
             # live_migration might raises exceptions, but
             # nothing must be recovered in this version.
@@ -5840,6 +5874,7 @@ class ComputeManager(manager.Manager):
             with excutils.save_and_reraise_exception():
                 self._set_migration_status(migration, 'error')
 
+        self.compute_api.operation_log_about_instance(context, 'Succeeded')
         self._notify_about_instance_usage(context, instance,
                                           'live_migration.end')
 
@@ -7768,7 +7803,14 @@ class ComputeManager(manager.Manager):
 
     @wrap_exception()
     def usb_mounted(self, context, instance, usb_vid, usb_pid, mounted):
-        self.driver.usb_mounted(context, instance, usb_vid, usb_pid, mounted)
+        try:
+            self.driver.usb_mounted(context, instance, usb_vid, usb_pid,
+                                    mounted)
+        except Exception:
+            self.compute_api.operation_log_about_instance(context,
+                                                          'Failed')
+            raise
+        self.compute_api.operation_log_about_instance(context, 'Succeeded')
 
     @wrap_exception()
     def usb_status(self, context, instance, usb_vid, usb_pid):
@@ -7994,6 +8036,7 @@ class ComputeManager(manager.Manager):
                                                    instance,
                                                    source_volume_id,
                                                    device_name)
+        self.compute_api.operation_log_about_instance(context, 'Succeeded')
 
     def _check_available_status(self, context, volume_id,
                                 check_status='available',

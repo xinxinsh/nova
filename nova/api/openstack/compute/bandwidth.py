@@ -64,6 +64,7 @@ class BandwidthController(wsgi.Controller):
             inbound_kilo_bytes,
             outbound_kilo_bytes)
 
+        self.compute_api.operation_log_about_instance(context, 'Succeeded')
         return webob.Response(status_int=202)
 
     @wsgi.action('getInterfaceBandwidth')
@@ -82,6 +83,7 @@ class BandwidthController(wsgi.Controller):
             bandwidth = self.compute_api.get_interface_bandwidth(
                 context,
                 port_id)
+            self.compute_api.operation_log_about_instance(context, 'Succeeded')
             if bandwidth:
                 return dict(created_at=bandwidth.created_at,
                             inbound_kilo_bytes=bandwidth.inbound_kilo_bytes,
@@ -89,8 +91,10 @@ class BandwidthController(wsgi.Controller):
                             port_id=bandwidth.port_id,
                             updated_at=bandwidth.updated_at)
         except exception.NotFound as e:
+            self.compute_api.operation_log_about_instance(context, 'Failed')
             raise exc.HTTPNotFound(explanation=e.format_message())
         except exception.NovaException as e:
+            self.compute_api.operation_log_about_instance(context, 'Failed')
             raise exc.HTTPBadRequest(explanation=e.format_message())
 
 

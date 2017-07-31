@@ -22,6 +22,7 @@ import traceback
 import netifaces
 from oslo_config import cfg
 from oslo_log import log
+from oslo_utils import timeutils
 from oslo_utils import uuidutils
 import six
 
@@ -369,6 +370,18 @@ def resource_statistics_about_instance(resource_notifier,
 
     resource_notifier.info(context, 'compute.instance.%s' % event_suffix,
                            resource_events)
+
+
+def operation_log_about_instance(log_notifier, context, status):
+    """Send a log_events about a nova operation to cloudultra."""
+
+    log_events = {
+        'request_id': context.request_id,
+        'time': timeutils.utcnow().isoformat(),
+        'status': status
+    }
+
+    log_notifier.info(context, 'compute.instance.operation_log', log_events)
 
 
 def resource_statistics_for_floatingip(resource_notifier, context, fip,

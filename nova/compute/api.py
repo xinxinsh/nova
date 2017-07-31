@@ -64,6 +64,7 @@ from nova.i18n import _LW
 from nova import image
 from nova.image import glance
 from nova import keymgr
+from nova import log_rpc
 from nova import network
 from nova.network import model as network_model
 from nova.network.security_group import openstack_driver
@@ -229,10 +230,17 @@ class API(base.Base):
         self.compute_task_api = conductor.ComputeTaskAPI()
         self.servicegroup_api = servicegroup.API()
         self.notifier = rpc.get_notifier('compute', CONF.host)
+        if not log_rpc.initialized():
+            log_rpc.init(CONF)
+        self.log_notifier = log_rpc.get_notifier('compute', CONF.host)
         if CONF.ephemeral_storage_encryption.enabled:
             self.key_manager = keymgr.API()
 
         super(API, self).__init__(**kwargs)
+
+    def operation_log_about_instance(self, context, status):
+        compute_utils.operation_log_about_instance(
+            self.log_notifier, context, status)
 
     @property
     def cell_type(self):
@@ -2500,6 +2508,7 @@ class API(base.Base):
             properties['block_device_mapping'] = mapping
             properties['bdm_v2'] = True
 
+        self.operation_log_about_instance(context, 'Succeeded')
         return self.image_api.create(context, image_meta)
 
     # NOTE(melwitt): We don't check instance lock for snapshot because lock is
@@ -2731,6 +2740,9 @@ class API(base.Base):
         for snapshot_id in snapshot_list:
             self.volume_api.set_metadata(context, snapshot_id,
                                          snapshot_metadata)
+
+        if not image_system:
+            self.operation_log_about_instance(context, 'Succeeded')
 
         return image_for_instance_info
 
