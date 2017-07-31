@@ -944,6 +944,8 @@ class ComputeManager(manager.Manager):
             self._resource_statistics_about_instance(context, instance,
                                                      'delete')
 
+        self.compute_api.operation_log_about_instance(context, 'Succeeded')
+
     def _create_reservations(self, context, instance, project_id, user_id):
         vcpus = instance.vcpus
         mem_mb = instance.memory_mb
@@ -5147,6 +5149,8 @@ class ComputeManager(manager.Manager):
                                           "detach_volume.end",
                                           extra_usage_info=info)
 
+        self.compute_api.operation_log_about_instance(context, 'Succeeded')
+
     @wrap_exception()
     @wrap_instance_fault
     def detach_volume(self, context, volume_id, instance, attachment_id=None):
@@ -8069,14 +8073,20 @@ class ComputeManager(manager.Manager):
             raise exception.PortNotFound(
                 _("Port %s is not attached") % port_id)
 
-        self.driver.set_interface_bandwidth(
-            instance, condemned, inbound_kilo_bytes, outbound_kilo_bytes)
+        try:
+            self.driver.set_interface_bandwidth(
+                instance, condemned, inbound_kilo_bytes, outbound_kilo_bytes)
+        except Exception:
+            self.compute_api.operation_log_about_instance(context,
+                                                          'Failed')
+            raise
         # Statistics bandwidth for floating ip.
         fip = self.network_api.get_floating_ip_by_port(context, port_id)
         if fip:
             rate = round(int(outbound_kilo_bytes) / 1000.0, 2)
             compute_utils.resource_statistics_for_floatingip(
                 self.resource_notifier, context, fip, rate)
+        self.compute_api.operation_log_about_instance(context, 'Succeeded')
 
     # (zhouxj)obscure check for pass through dict argument, still not clear
     # the reason why chinac pep8/flake8 weird check logic

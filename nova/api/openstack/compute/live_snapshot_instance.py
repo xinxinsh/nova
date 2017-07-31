@@ -330,6 +330,7 @@ class LiveSnapshotInstanceController(wsgi.Controller):
                                                   rollback_snapshot_list
                                                   )
         except Exception as ex:
+            self.compute_api.operation_log_about_instance(context, 'Failed')
             raise exc.HTTPError(explanation=ex.message)
 
         return webob.Response(status_int=200)

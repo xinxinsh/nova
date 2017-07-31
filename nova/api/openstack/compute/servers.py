@@ -1379,8 +1379,10 @@ class ServersController(wsgi.Controller):
         instance = self._get_instance(context, id)
         authorize(context, instance, 'stop')
         LOG.debug('stop instance', instance=instance)
+        action_result = False
         try:
             self.compute_api.stop(context, instance)
+            action_result = True
         except (exception.InstanceNotReady, exception.InstanceIsLocked) as e:
             raise webob.exc.HTTPConflict(explanation=e.format_message())
         except exception.InstanceUnknownCell as e:
@@ -1388,6 +1390,12 @@ class ServersController(wsgi.Controller):
         except exception.InstanceInvalidState as state_error:
             common.raise_http_conflict_for_instance_invalid_state(state_error,
                 'stop', id)
+        finally:
+            if not action_result:
+                self.compute_api.operation_log_about_instance(context,
+                                                              'Failed')
+
+        self.compute_api.operation_log_about_instance(context, 'Succeeded')
 
     @wsgi.Controller.api_version("2.17")
     @wsgi.response(202)
