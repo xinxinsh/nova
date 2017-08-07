@@ -3916,7 +3916,7 @@ class ComputeTestCase(BaseTestCase):
             self.context, instance, vpn=False,
             requested_networks=None, macs=macs,
             security_groups=[], dhcp_options=None,
-            bind_host_id=self.compute.host).AndReturn(
+            bind_host_id=self.compute.host, subnet_id=None).AndReturn(
                 fake_network.fake_get_instance_nw_info(self, 1, 1))
 
         self.mox.StubOutWithMock(self.compute.driver, "macs_for_instance")
@@ -3924,7 +3924,7 @@ class ComputeTestCase(BaseTestCase):
             mox.IsA(instance_obj.Instance)).AndReturn(macs)
         self.mox.ReplayAll()
         self.compute._build_networks_for_instance(self.context, instance,
-                requested_networks=None, security_groups=None)
+                requested_networks=None, security_groups=None, subnet_id=None)
 
     def _create_server_group(self, policies, instance_host):
         group_instance = self._create_fake_instance_obj(
@@ -11137,18 +11137,6 @@ class ComputePolicyTestCase(BaseTestCase):
                           self.compute_api.create, self.context, None, '1',
                           availability_zone='1', forced_host='1')
 
-    def test_force_host_pass(self):
-        rules = {"compute:create": [],
-                 "compute:create:forced_host": [],
-                 "network:validate_networks": []}
-        self.policy.set_rules(rules)
-
-        self.compute_api.create(self.context,
-                objects.Flavor(id=1, disabled=False, memory_mb=256, vcpus=1,
-                    root_gb=1, ephemeral_gb=1, swap=0),
-                image_href=uuids.host_instance, availability_zone='1',
-                forced_host='1')
-
 
 class DisabledInstanceTypesTestCase(BaseTestCase):
     """Some instance-types are marked 'disabled' which means that they will not
@@ -11166,12 +11154,6 @@ class DisabledInstanceTypesTestCase(BaseTestCase):
         super(DisabledInstanceTypesTestCase, self).setUp()
         self.compute_api = compute.API()
         self.inst_type = flavors.get_default_flavor()
-
-    def test_can_build_instance_from_visible_instance_type(self):
-        self.inst_type['disabled'] = False
-        # Assert that exception.FlavorNotFound is not raised
-        self.compute_api.create(self.context, self.inst_type,
-                                image_href=uuids.image_instance)
 
     def test_cannot_build_instance_from_disabled_instance_type(self):
         self.inst_type['disabled'] = True

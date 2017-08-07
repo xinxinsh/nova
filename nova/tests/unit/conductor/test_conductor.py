@@ -499,7 +499,7 @@ class _BaseTaskTestCase(object):
                 requested_networks=None,
                 security_groups='security_groups',
                 block_device_mapping=mox.IgnoreArg(),
-                node='node1', limits=[])
+                node='node1', limits=[], subnet_id=None)
         db.block_device_mapping_get_all_by_instance(self.context,
                 instances[1].uuid).AndReturn([])
         self.conductor_manager.compute_rpcapi.build_and_run_instance(
@@ -520,7 +520,7 @@ class _BaseTaskTestCase(object):
                 requested_networks=None,
                 security_groups='security_groups',
                 block_device_mapping=mox.IgnoreArg(),
-                node='node2', limits=[])
+                node='node2', limits=[], subnet_id=None)
         self.mox.ReplayAll()
 
         # build_instances() is a cast, we need to wait for it to complete
@@ -1577,7 +1577,7 @@ class ConductorTaskTestCase(_BaseTaskTestCase, test_compute.BaseTestCase):
                 requested_networks=None,
                 security_groups='security_groups',
                 block_device_mapping=mox.IsA(objects.BlockDeviceMappingList),
-                node='node2', limits=[])
+                node='node2', limits=[], subnet_id=None)
         self.mox.ReplayAll()
 
         # build_instances() is a cast, we need to wait for it to complete
@@ -1592,7 +1592,7 @@ class ConductorTaskTestCase(_BaseTaskTestCase, test_compute.BaseTestCase):
                 requested_networks=None,
                 security_groups='security_groups',
                 block_device_mapping='block_device_mapping',
-                legacy_bdm=False)
+                legacy_bdm=False, subnet_id=None)
 
     @mock.patch.object(scheduler_utils, 'setup_instance_group')
     @mock.patch.object(scheduler_utils, 'build_request_spec')
@@ -1632,7 +1632,7 @@ class ConductorTaskTestCase(_BaseTaskTestCase, test_compute.BaseTestCase):
                     requested_networks=None,
                     security_groups='security_groups',
                     block_device_mapping='block_device_mapping',
-                    legacy_bdm=False)
+                    legacy_bdm=False, subnet_id=None)
 
             # NOTE(sbauza): Due to populate_retry() later in the code,
             # filter_properties is dynamically modified
@@ -1651,7 +1651,7 @@ class ConductorTaskTestCase(_BaseTaskTestCase, test_compute.BaseTestCase):
                     requested_networks=None,
                     security_groups='security_groups',
                     block_device_mapping=mock.ANY,
-                    node='node2', limits=[])
+                    node='node2', limits=[], subnet_id=None)
 
 
 class ConductorTaskRPCAPITestCase(_BaseTaskTestCase,

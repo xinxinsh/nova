@@ -310,7 +310,8 @@ class ComputeTaskAPI(object):
 
     def build_instances(self, context, instances, image, filter_properties,
             admin_password, injected_files, requested_networks,
-            security_groups, block_device_mapping, legacy_bdm=True):
+            security_groups, block_device_mapping, legacy_bdm=True,
+            subnet_id=None):
         image_p = jsonutils.to_primitive(image)
         version = '1.10'
         if not self.client.can_send_version(version):
@@ -334,6 +335,8 @@ class ComputeTaskAPI(object):
             bdm_p = objects_base.obj_to_primitive(block_device_mapping)
             kw.update({'block_device_mapping': bdm_p,
                        'legacy_bdm': legacy_bdm})
+        if subnet_id:
+            kw['subnet_id'] = subnet_id
 
         cctxt = self.client.prepare(version=version)
         cctxt.cast(context, 'build_instances', **kw)

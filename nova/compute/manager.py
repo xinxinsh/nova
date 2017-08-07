@@ -1577,7 +1577,8 @@ class ComputeManager(manager.Manager):
             raise exception.InstanceExists(name=instance.name)
 
     def _allocate_network_async(self, context, instance, requested_networks,
-                                macs, security_groups, is_vpn, dhcp_options):
+                                macs, security_groups, is_vpn, dhcp_options,
+                                subnet_id=None):
         """Method used to allocate networks in the background.
 
         Broken out for testing.
@@ -1601,7 +1602,8 @@ class ComputeManager(manager.Manager):
                     macs=macs,
                     security_groups=security_groups,
                     dhcp_options=dhcp_options,
-                    bind_host_id=bind_host_id)
+                    bind_host_id=bind_host_id,
+                    subnet_id=subnet_id)
                 LOG.debug('Instance network_info: |%s|', nwinfo,
                           instance=instance)
                 instance.system_metadata['network_allocated'] = 'True'
@@ -1629,7 +1631,8 @@ class ComputeManager(manager.Manager):
                     # Not reached.
 
     def _build_networks_for_instance(self, context, instance,
-                                     requested_networks, security_groups):
+                                     requested_networks, security_groups,
+                                     subnet_id=None):
 
         # If we're here from a reschedule the network may already be allocated.
         if strutils.bool_from_string(
@@ -1649,12 +1652,13 @@ class ComputeManager(manager.Manager):
         dhcp_options = self.driver.dhcp_options_for_instance(instance)
         network_info = self._allocate_network(context, instance,
                                               requested_networks, macs,
-                                              security_groups, dhcp_options)
+                                              security_groups, dhcp_options,
+                                              subnet_id=subnet_id)
 
         return network_info
 
     def _allocate_network(self, context, instance, requested_networks, macs,
-                          security_groups, dhcp_options):
+                          security_groups, dhcp_options, subnet_id=None):
         """Start network allocation asynchronously.  Return an instance
         of NetworkInfoAsyncWrapper that can be used to retrieve the
         allocated networks when the operation has finished.
@@ -1671,7 +1675,7 @@ class ComputeManager(manager.Manager):
         return network_model.NetworkInfoAsyncWrapper(
             self._allocate_network_async, context, instance,
             requested_networks, macs, security_groups, is_vpn,
-            dhcp_options)
+            dhcp_options, subnet_id=subnet_id)
 
     def _default_root_device_name(self, instance, image_meta, root_bdm):
         try:
@@ -1902,7 +1906,7 @@ class ComputeManager(manager.Manager):
                                filter_properties, admin_password=None,
                                injected_files=None, requested_networks=None,
                                security_groups=None, block_device_mapping=None,
-                               node=None, limits=None):
+                               node=None, limits=None, subnet_id=None):
 
         @utils.synchronized(instance.uuid)
         def _locked_do_build_and_run_instance(*args, **kwargs):
@@ -1920,7 +1924,7 @@ class ComputeManager(manager.Manager):
                       context, instance, image, request_spec,
                       filter_properties, admin_password, injected_files,
                       requested_networks, security_groups,
-                      block_device_mapping, node, limits)
+                      block_device_mapping, node, limits, subnet_id=subnet_id)
 
     @hooks.add_hook('build_instance')
     @wrap_exception()
@@ -1932,7 +1936,7 @@ class ComputeManager(manager.Manager):
                                    admin_password, injected_files,
                                    requested_networks, security_groups,
                                    block_device_mapping,
-                                   node=None, limits=None):
+                                   node=None, limits=None, subnet_id=None):
 
         try:
             LOG.debug('Starting instance...', context=context,
@@ -1968,7 +1972,8 @@ class ComputeManager(manager.Manager):
                                              security_groups,
                                              block_device_mapping, node,
                                              limits,
-                                             filter_properties)
+                                             filter_properties,
+                                             subnet_id=subnet_id)
             LOG.info(_LI('Took %0.2f seconds to build instance.'),
                      timer.elapsed(), instance=instance)
             return build_results.ACTIVE
@@ -2023,7 +2028,8 @@ class ComputeManager(manager.Manager):
                                                   injected_files,
                                                   requested_networks,
                                                   security_groups,
-                                                  block_device_mapping)
+                                                  block_device_mapping,
+                                                  subnet_id=subnet_id)
             return build_results.RESCHEDULED
         except (exception.InstanceNotFound,
                 exception.UnexpectedDeletingTaskStateError):
@@ -2081,7 +2087,7 @@ class ComputeManager(manager.Manager):
                                 admin_password, requested_networks,
                                 security_groups,
                                 block_device_mapping, node, limits,
-                                filter_properties):
+                                filter_properties, subnet_id=None):
 
         action_result = False
         image_name = image.get('name')
@@ -2100,7 +2106,8 @@ class ComputeManager(manager.Manager):
                 with self._build_resources(context, instance,
                                            requested_networks, security_groups,
                                            image_meta,
-                                           block_device_mapping) as resources:
+                                           block_device_mapping,
+                                           subnet_id=subnet_id) as resources:
                     instance.vm_state = vm_states.BUILDING
                     instance.task_state = task_states.SPAWNING
                     # NOTE(JoshNang) This also saves the changes to the
@@ -2218,14 +2225,16 @@ class ComputeManager(manager.Manager):
 
     @contextlib.contextmanager
     def _build_resources(self, context, instance, requested_networks,
-                         security_groups, image_meta, block_device_mapping):
+                         security_groups, image_meta, block_device_mapping,
+                         subnet_id=None):
         resources = {}
         network_info = None
         try:
             LOG.debug('Start building networks asynchronously for instance.',
                       instance=instance)
             network_info = self._build_networks_for_instance(
-                context, instance, requested_networks, security_groups)
+                context, instance, requested_networks, security_groups,
+                subnet_id=subnet_id)
             resources['network_info'] = network_info
         except (exception.InstanceNotFound,
                 exception.UnexpectedDeletingTaskStateError):

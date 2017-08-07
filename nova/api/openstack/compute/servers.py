@@ -619,6 +619,8 @@ class ServersController(wsgi.Controller):
         if requested_networks and len(requested_networks):
             authorize(context, target, 'create:attach_network')
 
+        subnet_id = server_dict.get('subnet_id', None)
+
         try:
             flavor_id = self._flavor_id_from_req_data(body)
         except ValueError:
@@ -641,6 +643,7 @@ class ServersController(wsgi.Controller):
                             admin_password=password,
                             requested_networks=requested_networks,
                             check_server_group_quota=True,
+                            subnet_id=subnet_id,
                             **create_kwargs)
             action_result = True
         except (exception.QuotaError,

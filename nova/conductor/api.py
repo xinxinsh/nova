@@ -195,7 +195,8 @@ class ComputeTaskAPI(object):
 
     def build_instances(self, context, instances, image, filter_properties,
             admin_password, injected_files, requested_networks,
-            security_groups, block_device_mapping, legacy_bdm=True):
+            security_groups, block_device_mapping, legacy_bdm=True,
+            subnet_id=None):
         self.conductor_compute_rpcapi.build_instances(context,
                 instances=instances, image=image,
                 filter_properties=filter_properties,
@@ -203,7 +204,8 @@ class ComputeTaskAPI(object):
                 requested_networks=requested_networks,
                 security_groups=security_groups,
                 block_device_mapping=block_device_mapping,
-                legacy_bdm=legacy_bdm)
+                legacy_bdm=legacy_bdm,
+                subnet_id=subnet_id)
 
     def unshelve_instance(self, context, instance, request_spec=None):
         self.conductor_compute_rpcapi.unshelve_instance(context,

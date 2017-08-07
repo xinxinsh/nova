@@ -1119,7 +1119,8 @@ class ComputeAPI(object):
     def build_and_run_instance(self, ctxt, instance, host, image, request_spec,
             filter_properties, admin_password=None, injected_files=None,
             requested_networks=None, security_groups=None,
-            block_device_mapping=None, node=None, limits=None):
+            block_device_mapping=None, node=None, limits=None,
+            subnet_id=None):
 
         version = '4.0'
         cctxt = self.client.prepare(server=host, version=version)
@@ -1131,7 +1132,7 @@ class ComputeAPI(object):
                 requested_networks=requested_networks,
                 security_groups=security_groups,
                 block_device_mapping=block_device_mapping, node=node,
-                limits=limits)
+                limits=limits, subnet_id=subnet_id)
 
     def quiesce_instance(self, ctxt, instance):
         version = '4.0'

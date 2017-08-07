@@ -387,7 +387,8 @@ class ComputeTaskManager(base.Base):
 
     def build_instances(self, context, instances, image, filter_properties,
             admin_password, injected_files, requested_networks,
-            security_groups, block_device_mapping=None, legacy_bdm=True):
+            security_groups, block_device_mapping=None, legacy_bdm=True,
+            subnet_id=None):
         # TODO(ndipanov): Remove block_device_mapping and legacy_bdm in version
         #                 2.0 of the RPC API.
         # TODO(danms): Remove this in version 2.0 of the RPC API
@@ -450,7 +451,8 @@ class ComputeTaskManager(base.Base):
                     requested_networks=requested_networks,
                     security_groups=security_groups,
                     block_device_mapping=bdms, node=host['nodename'],
-                    limits=host['limits'])
+                    limits=host['limits'],
+                    subnet_id=subnet_id)
 
     def _schedule_instances(self, context, request_spec, filter_properties):
         scheduler_utils.setup_instance_group(context, request_spec,

@@ -216,7 +216,7 @@ class API(base_api.NetworkAPI):
 
     def _create_port(self, port_client, instance, network_id, port_req_body,
                      fixed_ip=None, security_group_ids=None,
-                     available_macs=None, dhcp_opts=None):
+                     available_macs=None, dhcp_opts=None, subnet_id=None):
         """Attempts to create a port for the instance on the given network.
 
         :param port_client: The client to use to create the port.
@@ -240,6 +240,13 @@ class API(base_api.NetworkAPI):
             if fixed_ip:
                 port_req_body['port']['fixed_ips'] = [
                     {'ip_address': str(fixed_ip)}]
+            if subnet_id:
+                port_req_body['port']['fixed_ips'] = [
+                    {'subnet_id': subnet_id['subnet_id']}]
+                if len(subnet_id['static_ip']) != 0:
+                    port_req_body['port']['fixed_ips'].append(
+                        {'ip_address': subnet_id['static_ip']})
+
             port_req_body['port']['network_id'] = network_id
             port_req_body['port']['admin_state_up'] = True
             port_req_body['port']['tenant_id'] = instance.project_id
@@ -553,6 +560,7 @@ class API(base_api.NetworkAPI):
         :param bind_host_id: the host ID to attach to the ports being created.
         """
         hypervisor_macs = kwargs.get('macs', None)
+        subnet_id = kwargs.get('subnet_id', None)
 
         # The neutron client and port_client (either the admin context or
         # tenant context) are read here. The reason for this is that there are
@@ -627,6 +635,8 @@ class API(base_api.NetworkAPI):
         created_port_ids = []
         ports_in_requested_order = []
         nets_in_requested_order = []
+
+        subnet_id_number = 0
         for request in ordered_networks:
             # Network lookup for available network_id
             network = None
@@ -668,10 +678,16 @@ class API(base_api.NetworkAPI):
                     preexisting_port_ids.append(port['id'])
                     ports_in_requested_order.append(port['id'])
                 else:
+                    subnet_info = None
+                    if subnet_id:
+                        subnet_info = subnet_id[subnet_id_number]
+                        subnet_id_number = subnet_id_number + 1
+
                     created_port = self._create_port(
                             port_client, instance, request.network_id,
                             port_req_body, request.address,
-                            security_group_ids, available_macs, dhcp_opts)
+                            security_group_ids, available_macs, dhcp_opts,
+                            subnet_id=subnet_info)
                     created_port_ids.append(created_port)
                     ports_in_requested_order.append(created_port)
                 self._update_port_dns_name(context, instance, network,

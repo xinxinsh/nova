@@ -4314,7 +4314,7 @@ class TestNeutronPortSecurity(test.NoDBTestCase):
         api = neutronapi.API()
         api.allocate_for_instance(
             'context', instance, requested_networks=onets,
-            security_groups=secgroups)
+            security_groups=secgroups, subnet_id=None)
 
         mock_process_security_groups.assert_called_once_with(
             instance, mock.ANY, [])
@@ -4324,13 +4324,13 @@ class TestNeutronPortSecurity(test.NoDBTestCase):
                 u'net1', {'port':
                           {'device_owner': u'compute:nova',
                            'device_id': 'uuid1'}},
-                None, [], None, None),
+                None, [], None, None, subnet_id=None),
             mock.call(
                 mock.ANY, instance,
                 u'net2', {'port':
                           {'device_owner': u'compute:nova',
                            'device_id': 'uuid1'}},
-                None, [], None, None)])
+                None, [], None, None, subnet_id=None)])
 
     @mock.patch.object(neutronapi.API, 'get_instance_nw_info')
     @mock.patch.object(neutronapi.API, '_update_port_dns_name')
@@ -4375,7 +4375,7 @@ class TestNeutronPortSecurity(test.NoDBTestCase):
         api = neutronapi.API()
         api.allocate_for_instance(
             'context', instance, requested_networks=onets,
-            security_groups=secgroups)
+            security_groups=secgroups, subnet_id=None)
 
         mock_process_security_groups.assert_called_once_with(
             instance, mock.ANY, ['default', 'secgrp1', 'secgrp2'])
@@ -4386,14 +4386,14 @@ class TestNeutronPortSecurity(test.NoDBTestCase):
                           {'device_owner': u'compute:nova',
                            'device_id': 'uuid1'}},
                 None, ['default-uuid', 'secgrp-uuid1', 'secgrp-uuid2'],
-                None, None),
+                None, None, subnet_id=None),
             mock.call(
                 mock.ANY, instance,
                 u'net2', {'port':
                           {'device_owner': u'compute:nova',
                            'device_id': 'uuid1'}},
                 None, ['default-uuid', 'secgrp-uuid1', 'secgrp-uuid2'],
-                None, None)])
+                None, None, subnet_id=None)])
 
     @mock.patch.object(neutronapi.API, 'get_instance_nw_info')
     @mock.patch.object(neutronapi.API, '_update_port_dns_name')
@@ -4436,7 +4436,7 @@ class TestNeutronPortSecurity(test.NoDBTestCase):
         api = neutronapi.API()
         api.allocate_for_instance(
             'context', instance, requested_networks=onets,
-            security_groups=secgroups)
+            security_groups=secgroups, subnet_id=None)
 
         mock_process_security_groups.assert_called_once_with(
             instance, mock.ANY, [])
@@ -4446,13 +4446,13 @@ class TestNeutronPortSecurity(test.NoDBTestCase):
                 u'net1', {'port':
                           {'device_owner': u'compute:nova',
                            'device_id': 'uuid1'}},
-                None, [], None, None),
+                None, [], None, None, subnet_id=None),
             mock.call(
                 mock.ANY, instance,
                 u'net2', {'port':
                           {'device_owner': u'compute:nova',
                            'device_id': 'uuid1'}},
-                None, [], None, None)])
+                None, [], None, None, subnet_id=None)])
 
     @mock.patch.object(neutronapi.API, 'get_instance_nw_info')
     @mock.patch.object(neutronapi.API, '_update_port_dns_name')

@@ -42,6 +42,18 @@ base_create = {
                         },
                         'additionalProperties': False,
                     }
+                },
+                'subnet_id': {
+                    'type': 'array',
+                    'items': {
+                        'type': 'object',
+                        'properties': {
+                            'net_id': {'type': 'string'},
+                            'subnet_id': {'type': 'string'},
+                            'static_ip': {'type': 'string'}
+                        },
+                        'additionalProperties': False,
+                    }
                 }
             },
             'required': ['name', 'flavorRef'],

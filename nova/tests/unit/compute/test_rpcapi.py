@@ -541,7 +541,7 @@ class ComputeRpcAPITestCase(test.NoDBTestCase):
                 admin_password='passwd', injected_files=None,
                 requested_networks=['network1'], security_groups=None,
                 block_device_mapping=None, node='node', limits=[],
-                version='4.0')
+                version='4.0', subnet_id=None)
 
     def test_quiesce_instance(self):
         self._test_compute_api('quiesce_instance', 'call',

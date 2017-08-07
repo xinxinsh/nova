@@ -1126,7 +1126,7 @@ class API(base.Base):
                requested_networks, config_drive,
                block_device_mapping, auto_disk_config, filter_properties,
                reservation_id=None, legacy_bdm=True, shutdown_terminate=False,
-               check_server_group_quota=False):
+               check_server_group_quota=False, subnet_id=None):
         """Verify all the input parameters regardless of the provisioning
         strategy being performed and schedule the instance(s) for
         creation.
@@ -1200,7 +1200,8 @@ class API(base.Base):
                 requested_networks=requested_networks,
                 security_groups=security_groups,
                 block_device_mapping=block_device_mapping,
-                legacy_bdm=False)
+                legacy_bdm=False,
+                subnet_id=subnet_id)
 
         return (instances, reservation_id)
 
@@ -1580,7 +1581,7 @@ class API(base.Base):
                access_ip_v4=None, access_ip_v6=None, requested_networks=None,
                config_drive=None, auto_disk_config=None, scheduler_hints=None,
                legacy_bdm=True, shutdown_terminate=False,
-               check_server_group_quota=False):
+               check_server_group_quota=False, subnet_id=None):
         """Provision instances, sending instance information to the
         scheduler.  The scheduler will determine where the instance(s)
         go and will handle creating the DB entries.
@@ -1623,7 +1624,8 @@ class API(base.Base):
                        filter_properties=filter_properties,
                        legacy_bdm=legacy_bdm,
                        shutdown_terminate=shutdown_terminate,
-                       check_server_group_quota=check_server_group_quota)
+                       check_server_group_quota=check_server_group_quota,
+                       subnet_id=subnet_id)
 
     def _check_auto_disk_config(self, instance=None, image=None,
                                 **extra_instance_updates):
