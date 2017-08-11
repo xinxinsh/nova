@@ -1724,6 +1724,7 @@ class API(base.Base):
                 self._confirm_resize_on_deleting(context, instance)
 
             is_local_delete = True
+            is_found = True
             try:
                 if not shelved_offloaded:
                     service = objects.Service.get_by_compute_host(
@@ -1752,13 +1753,28 @@ class API(base.Base):
                     cb(context, instance, bdms,
                        reservations=quotas.reservations)
             except exception.ComputeHostNotFound:
+                is_found = False
                 pass
 
-            if is_local_delete:
+            if is_local_delete and not is_found:
                 # If instance is in shelved_offloaded state or compute node
                 # isn't up, delete instance from db and clean bdms info and
                 # network info
+                # Chinac flow compute service is up and not found
+                # do terminal volume and delete from DB
+                LOG.warning(_("instance's host %s is down and not found"
+                              ", terminal volume and delete from database"),
+                              instance['host'], instance=instance)
                 self._local_delete(context, instance, bdms, delete_type, cb)
+                quotas.commit()
+            elif is_local_delete and is_found:
+                # Chinac flow compute service is up and found
+                # not terminal volume just delete from DB
+                LOG.warning(_("instance's host %s is down but found,"
+                              "not terminal volume just delete from database"),
+                              instance['host'], instance=instance)
+                self._local_delete(context, instance, bdms, delete_type, cb,
+                                   term_tag=False)
                 quotas.commit()
 
         except exception.InstanceNotFound:
@@ -1869,7 +1885,8 @@ class API(base.Base):
                           {'connector_host': connector.get('host'),
                            'instance_host': instance.host}, instance=instance)
 
-    def _local_cleanup_bdm_volumes(self, bdms, instance, context):
+    def _local_cleanup_bdm_volumes(self, bdms, instance, context,
+                                   term_tag=True):
         """The method deletes the bdm records and, if a bdm is a volume, call
         the terminate connection and the detach volume via the Volume API.
         """
@@ -1879,7 +1896,7 @@ class API(base.Base):
                 try:
                     connector = self._get_stashed_volume_connector(
                         bdm, instance)
-                    if connector:
+                    if connector and term_tag:
                         self.volume_api.terminate_connection(context,
                                                              bdm.volume_id,
                                                              connector)
@@ -1899,7 +1916,8 @@ class API(base.Base):
                     LOG.warn(err_str % exc, instance=instance)
             bdm.destroy()
 
-    def _local_delete(self, context, instance, bdms, delete_type, cb):
+    def _local_delete(self, context, instance, bdms, delete_type, cb,
+                      term_tag=True):
         if instance.vm_state == vm_states.SHELVED_OFFLOADED:
             LOG.info(_LI("instance is in SHELVED_OFFLOADED state, cleanup"
                          " the instance's info from database."),
@@ -1932,7 +1950,8 @@ class API(base.Base):
                 instance.host = orig_host
 
         # cleanup volumes
-        self._local_cleanup_bdm_volumes(bdms, instance, context)
+        self._local_cleanup_bdm_volumes(bdms, instance, context,
+                                        term_tag)
         cb(context, instance, bdms, local=True)
         sys_meta = instance.system_metadata
         instance.destroy()
