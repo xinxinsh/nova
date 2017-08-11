@@ -2305,6 +2305,14 @@ class ComputeManager(manager.Manager):
         try:
             # tear down allocated network structure
             self._deallocate_network(context, instance, requested_networks)
+        except exception.InstanceInfoCacheNotFound as error:
+            # Chinac change this flow not raise and set error
+            # just LOG error and go no next step
+            # info cache update error
+            LOG.warning('Failed to deallocate network for instance. '
+                          'Error: %s', error, instance=instance)
+            LOG.warning('If nova-compute has down and delete vm ,'
+                        'could ingore this error')
         except Exception:
             with excutils.save_and_reraise_exception():
                 LOG.error(_LE('Failed to deallocate network for instance.'),
