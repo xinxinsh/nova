@@ -1875,6 +1875,12 @@ class LibvirtDriver(driver.ComputeDriver):
         if 'source_instance' in snapshot['properties']:
             metadata['is_public'] = snapshot['is_public']
 
+            image_src_metadata = self._image_api.get(context,
+                                                     instance.image_ref)
+            for key in image_src_metadata['properties']:
+                metadata['properties'][key] = \
+                    image_src_metadata['properties'][key]
+
         snapshot_name = uuid.uuid4().hex
 
         state = guest.get_power_state(self._host)
