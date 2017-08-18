@@ -3190,12 +3190,14 @@ class ComputeManager(manager.Manager):
     @reverts_task_state
     @wrap_instance_fault
     @delete_image_on_error
-    def snapshot_instance(self, context, image_id, instance):
+    def snapshot_instance(self, context, image_id, instance,
+                          real_snapshot=False):
         """Snapshot an instance on this host.
 
         :param context: security context
         :param instance: a nova.objects.instance.Instance object
         :param image_id: glance.db.sqlalchemy.models.Image.Id
+        :param real_snapshot: real snap default False
         """
         # NOTE(dave-mcnally) the task state will already be set by the api
         # but if the compute manager has crashed/been restarted prior to the
@@ -3218,10 +3220,10 @@ class ComputeManager(manager.Manager):
             return
 
         self._snapshot_instance(context, image_id, instance,
-                                task_states.IMAGE_SNAPSHOT)
+                                task_states.IMAGE_SNAPSHOT, real_snapshot)
 
     def _snapshot_instance(self, context, image_id, instance,
-                           expected_task_state):
+                           expected_task_state, real_snapshot=False):
         context = context.elevated()
 
         instance.power_state = self._get_power_state(context, instance)
@@ -3247,8 +3249,12 @@ class ComputeManager(manager.Manager):
                 instance.task_state = task_state
                 instance.save(expected_task_state=expected_state)
 
-            self.driver.snapshot(context, instance, image_id,
-                                 update_task_state)
+            if not real_snapshot:
+                self.driver.snapshot(context, instance, image_id,
+                                     update_task_state)
+            else:
+                self.driver.real_snapshot(context, instance, image_id,
+                                          update_task_state)
 
             instance.task_state = None
             instance.save()
@@ -7910,7 +7916,7 @@ class ComputeManager(manager.Manager):
                                           memory_image_meta,
                                           volume_mapping, vm_active):
 
-        self.snapshot_instance(context, system_image_id, instance)
+        self.snapshot_instance(context, system_image_id, instance, True)
         self.create_memory_snapshot(context, instance, memory_image_meta,
                                     volume_mapping, vm_active)
 
@@ -7964,6 +7970,11 @@ class ComputeManager(manager.Manager):
                                   purge_props=True)
         except exception.ImageNotAuthorized as e:
             LOG.error(_LE('Update image: %s'), e)
+
+    @wrap_exception()
+    def delete_snapshot(self, context, instance, snapshot_id):
+
+        self.driver.delete_snapshot(context, instance, snapshot_id)
 
     @wrap_exception()
     @reverts_task_state
@@ -8026,8 +8037,10 @@ class ComputeManager(manager.Manager):
 
         # rollback vm from image
         if image_disk_snapshot_id:
-            self.compute_api.image_rollback(context, instance,
-                                            image_disk_snapshot_id)
+            # self.compute_api.image_rollback(context, instance,
+            #                               image_disk_snapshot_id)
+            self.driver.rollback_to_snap(context, instance,
+                                         image_disk_snapshot_id)
 
         instance.save()
         if is_rollback_memory:

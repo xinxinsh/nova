@@ -988,13 +988,14 @@ class ComputeAPI(object):
                    backup_type=backup_type,
                    rotation=rotation)
 
-    def snapshot_instance(self, ctxt, instance, image_id):
+    def snapshot_instance(self, ctxt, instance, image_id, real_snapshot=False):
         version = '4.0'
         cctxt = self.client.prepare(server=_compute_host(None, instance),
                 version=version)
         cctxt.cast(ctxt, 'snapshot_instance',
                    instance=instance,
-                   image_id=image_id)
+                   image_id=image_id,
+                   real_snapshot=real_snapshot)
 
     def start_instance(self, ctxt, instance):
         version = '4.0'
@@ -1298,6 +1299,14 @@ class ComputeAPI(object):
         return cctxt.cast(ctxt, 'update_snapshot_info',
                           instance=instance,
                           image_id=image_id)
+
+    def delete_snapshot(self, ctxt, instance, snapshot_id):
+        version = '4.6'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                                    version=version)
+        return cctxt.call(ctxt, 'delete_snapshot',
+                          instance=instance,
+                          snapshot_id=snapshot_id)
 
     def create_system_and_memory_snapshot(self, ctxt, instance,
                                           system_image_id,

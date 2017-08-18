@@ -2026,6 +2026,252 @@ class LibvirtDriver(driver.ComputeDriver):
 
         LOG.info(_LI("Snapshot image upload complete"), instance=instance)
 
+    def real_snapshot(self, context, instance, image_id, update_task_state):
+        """Create snapshot from a running VM instance.
+
+        This command only works with qemu 0.14+
+        """
+        try:
+            guest = self._host.get_guest(instance)
+
+            # virDomain object to use nova.virt.libvirt.Guest.
+            # We should be able to remove virt_dom at the end.
+            virt_dom = guest._domain
+        except exception.InstanceNotFound:
+            raise exception.InstanceNotRunning(instance_id=instance.uuid)
+
+        snapshot = self._image_api.get(context, image_id)
+
+        # source_format is an on-disk format
+        # source_type is a backend type
+        disk_path, source_format = libvirt_utils.find_disk(virt_dom)
+        source_type = libvirt_utils.get_disk_type_from_path(disk_path)
+
+        # We won't have source_type for raw or qcow2 disks, because we can't
+        # determine that from the path. We should have it from the libvirt
+        # xml, though.
+        if source_type is None:
+            source_type = source_format
+        # For lxc instances we won't have it either from libvirt xml
+        # (because we just gave libvirt the mounted filesystem), or the path,
+        # so source_type is still going to be None. In this case,
+        # snapshot_backend is going to default to CONF.libvirt.images_type
+        # below, which is still safe.
+
+        image_format = CONF.libvirt.snapshot_image_format or source_type
+
+        # NOTE(bfilippov): save lvm and rbd as raw
+        if ((image_format == 'lvm' and CONF.libvirt.images_type != 'ussvd')
+            or image_format == 'rbd'):
+            image_format = 'raw'
+        elif CONF.libvirt.images_type == 'ussvd' and image_format == 'lvm':
+            image_format = 'qcow2'
+            source_type = 'ussvd'
+
+        metadata = self._create_snapshot_metadata(instance.image_meta,
+                                                  instance,
+                                                  image_format,
+                                                  snapshot['name'])
+
+        # 'source_instance' exist only when NeoCU to customize_image
+        if 'source_instance' in snapshot['properties']:
+            metadata['is_public'] = snapshot['is_public']
+
+        # snapshot_name = uuid.uuid4().hex
+        snapshot_name = image_id
+
+        state = guest.get_power_state(self._host)
+
+        # NOTE(rmk): Live snapshots require QEMU 1.3 and Libvirt 1.0.0.
+        #            These restrictions can be relaxed as other configurations
+        #            can be validated.
+        # NOTE(dgenin): Instances with LVM encrypted ephemeral storage require
+        #               cold snapshots. Currently, checking for encryption is
+        #               redundant because LVM supports only cold snapshots.
+        #               It is necessary in case this situation changes in the
+        #               future.
+        if (self._host.has_min_version(MIN_LIBVIRT_LIVESNAPSHOT_VERSION,
+                                       MIN_QEMU_LIVESNAPSHOT_VERSION,
+                                       host.HV_DRIVER_QEMU)
+            and source_type not in ('lvm')
+            and not CONF.ephemeral_storage_encryption.enabled
+            and not CONF.workarounds.disable_libvirt_livesnapshot):
+            live_snapshot = True
+            # Abort is an idempotent operation, so make sure any block
+            # jobs which may have failed are ended. This operation also
+            # confirms the running instance, as opposed to the system as a
+            # whole, has a new enough version of the hypervisor (bug 1193146).
+            try:
+                guest.get_block_device(disk_path).abort_job()
+            except libvirt.libvirtError as ex:
+                error_code = ex.get_error_code()
+                if error_code == libvirt.VIR_ERR_CONFIG_UNSUPPORTED:
+                    live_snapshot = False
+                else:
+                    pass
+        else:
+            live_snapshot = False
+
+        # NOTE(rmk): We cannot perform live snapshots when a managedSave
+        #            file is present, so we will use the cold/legacy method
+        #            for instances which are shutdown.
+        if state == power_state.SHUTDOWN:
+            live_snapshot = False
+
+        self._prepare_domain_for_snapshot(context, live_snapshot, state,
+                                          instance)
+
+        snapshot_backend = self.image_backend.snapshot(instance,
+                                                       disk_path,
+                                                       image_type=source_type)
+
+        if live_snapshot:
+            LOG.info(_LI("Beginning live snapshot process"),
+                     instance=instance)
+        else:
+            LOG.info(_LI("Beginning cold snapshot process"),
+                     instance=instance)
+
+        update_task_state(task_state=task_states.IMAGE_PENDING_UPLOAD)
+
+        try:
+            update_task_state(task_state=task_states.IMAGE_UPLOADING,
+                              expected_state=task_states.IMAGE_PENDING_UPLOAD)
+            if source_type == 'rbd':
+                snapshot_backend.direct_snapshot_create_snap(
+                    context, snapshot_name, image_format, image_id,
+                    instance.image_ref)
+                self._snapshot_domain(context, live_snapshot, virt_dom, state,
+                                      instance)
+
+            elif (CONF.libvirt.images_type == 'ussvd' and not live_snapshot and
+                          state == power_state.RUNNING):
+                raise NotImplementedError("ussvd snapshot suspend "
+                                          "vm is not implemented")
+            else:
+                metadata['location'] = snapshot_backend.direct_snapshot(
+                    context, snapshot_name, image_format, image_id,
+                    instance.image_ref)
+                self._snapshot_domain(context, live_snapshot, virt_dom, state,
+                                      instance)
+            self._image_api.delete(context, image_id)
+        except (NotImplementedError, exception.ImageUnacceptable,
+                exception.Forbidden) as e:
+            if type(e) != NotImplementedError:
+                LOG.warning(_LW('Performing standard snapshot because direct '
+                                'snapshot failed: %(error)s'), {'error': e})
+            failed_snap = metadata.pop('location', None)
+            if failed_snap:
+                failed_snap = {'url': str(failed_snap)}
+            snapshot_backend.cleanup_direct_snapshot(failed_snap,
+                                                     also_destroy_volume=True,
+                                                     ignore_errors=True)
+            update_task_state(task_state=task_states.IMAGE_PENDING_UPLOAD,
+                              expected_state=task_states.IMAGE_UPLOADING)
+
+            if ((source_type == 'rbd' or source_type == 'ussvd') and
+                    live_snapshot):
+                # Standard snapshot uses qemu-img convert from RBD which is
+                # not safe to run with live_snapshot.
+                live_snapshot = False
+                # Suspend the guest, so this is no longer a live snapshot
+                self._prepare_domain_for_snapshot(context, live_snapshot,
+                                                  state, instance)
+
+            snapshot_directory = CONF.libvirt.snapshots_directory
+            fileutils.ensure_tree(snapshot_directory)
+            with utils.tempdir(dir=snapshot_directory) as tmpdir:
+                try:
+                    out_path = os.path.join(tmpdir, snapshot_name)
+                    if live_snapshot:
+                        # NOTE(xqueralt): libvirt needs o+x in the tempdir
+                        os.chmod(tmpdir, 0o701)
+                        self._live_snapshot(context, instance, guest,
+                                            disk_path, out_path, source_format,
+                                            image_format, instance.image_meta)
+                    else:
+                        snapshot_backend.snapshot_extract(out_path,
+                                                          image_format)
+                finally:
+                    self._snapshot_domain(context, live_snapshot, virt_dom,
+                                          state, instance)
+                    LOG.info(_LI("Snapshot extracted, beginning image upload"),
+                             instance=instance)
+
+                # Upload that image to the image service
+                update_task_state(task_state=task_states.IMAGE_UPLOADING,
+                                  expected_state=task_states.
+                                  IMAGE_PENDING_UPLOAD)
+                with libvirt_utils.file_open(out_path) as image_file:
+                    self._image_api.update(context,
+                                           image_id,
+                                           metadata,
+                                           image_file)
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.exception(_LE("Failed to snapshot image"))
+                failed_snap = metadata.pop('location', None)
+                if failed_snap:
+                    failed_snap = {'url': str(failed_snap)}
+                snapshot_backend.cleanup_direct_snapshot(
+                    failed_snap, also_destroy_volume=True,
+                    ignore_errors=True)
+
+        LOG.info(_LI("Snapshot image upload complete"), instance=instance)
+
+    def delete_snapshot(self, context, instance, snapshot_id):
+        """Delete snapshot from a running VM instance.
+
+            This command only works with qemu 0.14+
+            """
+        try:
+            guest = self._host.get_guest(instance)
+
+            # virDomain object to use nova.virt.libvirt.Guest.
+            # We should be able to remove virt_dom at the end.
+            virt_dom = guest._domain
+        except exception.InstanceNotFound:
+            raise exception.InstanceNotRunning(instance_id=instance.uuid)
+
+        # source_format is an on-disk format
+        # source_type is a backend type
+        disk_path, source_format = libvirt_utils.find_disk(virt_dom)
+        source_type = libvirt_utils.get_disk_type_from_path(disk_path)
+
+        snapshot_backend = self.image_backend.snapshot(instance,
+                                                   disk_path,
+                                                   image_type=source_type)
+        snapshot_backend.remove_snap(snapshot_id, force=True)
+
+        LOG.info(_LI("Snapshot image delete complete,snapshot_id : %s"),
+                 snapshot_id, instance=instance)
+
+    def rollback_to_snap(self, context, instance, snapshot_id):
+        """rollback snapshot from a running VM instance.
+
+        This command only works with qemu 0.14+
+        """
+        try:
+            guest = self._host.get_guest(instance)
+
+            # virDomain object to use nova.virt.libvirt.Guest.
+            # We should be able to remove virt_dom at the end.
+            virt_dom = guest._domain
+        except exception.InstanceNotFound:
+            raise exception.InstanceNotRunning(instance_id=instance.uuid)
+
+        # source_format is an on-disk format
+        # source_type is a backend type
+        disk_path, source_format = libvirt_utils.find_disk(virt_dom)
+        source_type = libvirt_utils.get_disk_type_from_path(disk_path)
+        snapshot_backend = self.image_backend.snapshot(instance,
+                                                       disk_path,
+                                                       image_type=source_type)
+        snapshot_backend.rollback_to_snap(snapshot_id)
+
+        LOG.info(_LI("Snapshot image rollback complete,snapshot_id : %s"),
+                 snapshot_id, instance=instance)
+
     def _prepare_domain_for_snapshot(self, context, live_snapshot, state,
                                      instance):
         # NOTE(dkang): managedSave does not work for LXC

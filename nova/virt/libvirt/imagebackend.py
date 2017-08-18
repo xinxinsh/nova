@@ -957,8 +957,9 @@ class Rbd(Image):
     def create_snap(self, name):
         return self.driver.create_snap(self.rbd_name, name)
 
-    def remove_snap(self, name, ignore_errors=False):
-        return self.driver.remove_snap(self.rbd_name, name, ignore_errors)
+    def remove_snap(self, name, ignore_errors=False, force=False):
+        return self.driver.remove_snap(self.rbd_name, name,
+                                       ignore_errors, force=force)
 
     def rollback_to_snap(self, name):
         return self.driver.rollback_to_snap(self.rbd_name, name)
