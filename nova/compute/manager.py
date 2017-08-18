@@ -8091,7 +8091,7 @@ class ComputeManager(manager.Manager):
         # Statistics bandwidth for floating ip.
         fip = self.network_api.get_floating_ip_by_port(context, port_id)
         if fip:
-            rate = round(int(outbound_kilo_bytes) / 1000.0, 2)
+            rate = round(int(outbound_kilo_bytes) * 8 * 1024 / 1000000.0)
             compute_utils.resource_statistics_for_floatingip(
                 self.resource_notifier, context, fip, rate)
         self.compute_api.operation_log_about_instance(context, 'Succeeded')
