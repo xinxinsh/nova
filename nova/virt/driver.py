@@ -908,6 +908,12 @@ class ComputeDriver(object):
         """
         raise NotImplementedError()
 
+    def rollback_migration_attach_volume(self, context, instance,
+                                         block_device_info):
+        """rollback live migration attach_volume """
+        # raise NotImplementedError()
+        return
+
     def rollback_live_migration_at_destination(self, context, instance,
                                                network_info,
                                                block_device_info,

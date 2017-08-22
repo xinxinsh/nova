@@ -13,6 +13,7 @@
 from oslo_config import cfg
 from oslo_log import log as logging
 import oslo_messaging as messaging
+from oslo_serialization import jsonutils
 import six
 
 from nova.compute import power_state
@@ -23,6 +24,7 @@ from nova import network
 from nova import objects
 from nova.scheduler import utils as scheduler_utils
 from nova import utils
+from nova import volume
 
 LOG = logging.getLogger(__name__)
 
@@ -53,6 +55,7 @@ class LiveMigrationTask(base.TaskBase):
         self.scheduler_client = scheduler_client
         self.request_spec = request_spec
         self.network_api = network.API()
+        self.volume_api = volume.API()
 
     def _execute(self):
         # aovid instance with direct port to live migrate
@@ -66,6 +69,9 @@ class LiveMigrationTask(base.TaskBase):
             self.migration.save()
         else:
             self._check_requested_destination()
+        # Chinac add volumes and interfaces check
+        self._check_volumes_state()
+        self._check_interfaces_state(self.instance)
 
         # TODO(johngarbutt) need to move complexity out of compute manager
         # TODO(johngarbutt) disk_over_commit?
@@ -103,6 +109,50 @@ class LiveMigrationTask(base.TaskBase):
         if not self.servicegroup_api.service_is_up(service):
             raise exception.ComputeServiceUnavailable(host=host)
 
+    def _check_volumes_state(self):
+        try:
+            bdms = objects.BlockDeviceMappingList.get_by_instance_uuid(
+                self.context, self.instance.uuid)
+            host_list = [self.source, self.destination]
+            for bdm in bdms:
+                volume_id = bdm.volume_id
+                vol = self.volume_api.get(self.context, volume_id)
+                self.volume_api.check_detach(self.context, vol, self.instance)
+                connection_info = jsonutils.loads(bdm.connection_info)
+                if connection_info and connection_info['connector'][
+                    'host'] not in host_list:
+                    reason = _('instance %(instance_uuid)s includes error '
+                               'volume connector host does not support for'
+                               ' live migrate')
+                    raise exception.MigrationPreCheckError(
+                        reason=reason % dict(instance_uuid=self.instance.uuid))
+        except exception.NotFound:
+            raise exception.BDMNotFound
+
+    def _check_interfaces_state(self, instance):
+        search_opts = {'device_id': instance['uuid']}
+        host_list = [self.source, self.destination]
+        try:
+            list_ports = self.network_api.list_ports(self.context,
+                                                     **search_opts)
+            for port in list_ports['ports']:
+                if port['binding:vif_type'] == 'binding_failed':
+                    reason = _('instance %(instance_uuid)s includes binding '
+                               'failed port does not support for'
+                               ' live migrate')
+                    raise exception.MigrationPreCheckError(
+                        reason=reason % dict(instance_uuid=instance['uuid']))
+                if str(port['binding:host_id']) not in host_list:
+                    reason = _('instance %(instance_uuid)s includes error '
+                               'binding host port does not support for'
+                               ' live migrate')
+                    raise exception.MigrationPreCheckError(
+                        reason=reason % dict(instance_uuid=instance['uuid']))
+        except exception.NotFound:
+            pass
+        except Exception as ex:
+            raise ex
+
     def _check_requested_destination(self):
         self._check_destination_is_not_source()
         self._check_host_is_up(self.destination)
@@ -134,8 +184,8 @@ class LiveMigrationTask(base.TaskBase):
                        "Lack of memory(host:%(avail)s <= "
                        "instance:%(mem_inst)s)")
             raise exception.MigrationPreCheckError(reason=reason % dict(
-                    instance_uuid=instance_uuid, dest=dest, avail=avail,
-                    mem_inst=mem_inst))
+                instance_uuid=instance_uuid, dest=dest, avail=avail,
+                mem_inst=mem_inst))
 
     def _get_compute_info(self, host):
         return objects.ComputeNode.get_first_node_by_host_for_old_compat(
@@ -157,9 +207,11 @@ class LiveMigrationTask(base.TaskBase):
 
     def _call_livem_checks_on_host(self, destination):
         try:
-            self.migrate_data = self.compute_rpcapi.\
+            self.migrate_data = self.compute_rpcapi. \
                 check_can_live_migrate_destination(self.context, self.instance,
-                    destination, self.block_migration, self.disk_over_commit)
+                                                   destination,
+                                                   self.block_migration,
+                                                   self.disk_over_commit)
         except messaging.MessagingTimeout:
             msg = _("Timeout while checking if we can live migrate to host: "
                     "%s") % destination
@@ -175,7 +227,7 @@ class LiveMigrationTask(base.TaskBase):
         # RequestSpec object
         request_spec = {'instance_properties': {'uuid': self.instance.uuid}}
         scheduler_utils.setup_instance_group(self.context, request_spec,
-                                                 filter_properties)
+                                             filter_properties)
         if not self.request_spec:
             # NOTE(sbauza): We were unable to find an original RequestSpec
             # object - probably because the instance is old.
@@ -199,7 +251,8 @@ class LiveMigrationTask(base.TaskBase):
             request_spec.ignore_hosts = attempted_hosts
             try:
                 host = self.scheduler_client.select_destinations(self.context,
-                                request_spec)[0]['host']
+                                                                 request_spec)[
+                    0]['host']
             except messaging.RemoteError as ex:
                 # TODO(ShaoHe Feng) There maybe multi-scheduler, and the
                 # scheduling algorithm is R-R, we can let other scheduler try.
@@ -213,7 +266,7 @@ class LiveMigrationTask(base.TaskBase):
                 self._call_livem_checks_on_host(host)
             except (exception.Invalid, exception.MigrationPreCheckError) as e:
                 LOG.debug("Skipping host: %(host)s because: %(e)s",
-                    {"host": host, "e": e})
+                          {"host": host, "e": e})
                 attempted_hosts.append(host)
                 host = None
         return host
