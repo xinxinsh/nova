@@ -2690,12 +2690,13 @@ class API(base.Base):
                     self.compute_rpcapi.snapshot_instance(
                         context,
                         instance,
-                        image_meta_system['id'])
+                        image_meta_system['id'], True)
             image_meta['properties']['snapshot_type'] = 'snapshot_for_online'
         else:
             if image_system and properties['system_snapshot'] == "True":
                 self.compute_rpcapi.snapshot_instance(context, instance,
-                                                      image_meta_system['id'])
+                                                      image_meta_system['id'],
+                                                      True)
             image_meta['properties']['snapshot_type'] = 'snapshot_for_offline'
 
         if not image_system:
@@ -2748,7 +2749,7 @@ class API(base.Base):
 
         image_meta['properties']['image_type'] = 'snapshot_for_instance'
         image_meta['properties']['instance_uuid'] = instance['uuid']
-        image_meta['properties']['snapshot_actual_status'] = 'saving'
+        image_meta['properties']['snapshot_actual_status'] = 'active'
 
         image_for_instance_info = self.image_api.create(context, image_meta)
 
@@ -4320,15 +4321,15 @@ class API(base.Base):
                     if block['device_name'] == '/dev/vda'\
                             and 'system_snapshot_id' in \
                                     image_meta['properties']:
-                        image_meta_system = image_service.show(
-                            context,
-                            image_meta['properties']['system_snapshot_id'])
-                        snapinfo['status'] = image_meta_system['status']
-                        snapinfo['disk_snapshot_id'] = image_meta_system['id']
-                        snapinfo['disk_display_name'] = \
-                            image_meta_system['name']
+                        # image_meta_system = image_service.show(
+                        #    context,
+                        #    image_meta['properties']['system_snapshot_id'])
+                        snapinfo['status'] = 'active'
+                        snapinfo['disk_snapshot_id'] = \
+                            image_meta['properties']['system_snapshot_id']
+                        snapinfo['disk_display_name'] = 'snap'
                         snapinfo['source_image_id'] = \
-                            image_meta_system['properties']['base_image_ref']
+                            image_meta['properties']['base_image_ref']
                     else:
                         snap = self.volume_api.get_snapshot(
                             context,
@@ -4427,12 +4428,12 @@ class API(base.Base):
                 except Exception:
                     pass
 
-    def delete_vm_snapshot(self, context, image_id):
+    def delete_vm_snapshot(self, context, instance, image_meta, image_id):
 
-        self.delete_system_disk_image(context)
+        # self.delete_system_disk_image(context)
 
         image_service = glance.get_default_image_service()
-        image_meta = image_service.show(context, image_id)
+        # image_meta = image_service.show(context, image_id)
 
         if(image_meta['status'] == 'active'
            and image_meta['properties']['image_type'] ==
@@ -4507,36 +4508,12 @@ class API(base.Base):
                             image_system_id = \
                                 image_meta['properties']['system_snapshot_id']
                             try:
-                                image_system = image_service.show(
-                                    context,
-                                    image_system_id)
-                                if image_system['status'] in ['active',
-                                                              'queued',
-                                                              'saving']:
-                                    image_service.delete(
-                                        context,
-                                        image_system_id)
-
-                                if image_system['status'] == 'error_deleting':
-                                    msg_snapshot = _("system_disk_snapshot %s "
-                                                     "is in error_deleting "
-                                                     "status! ") % \
-                                                   image_system_id
-                                    msg = msg + msg_snapshot
-                            except Exception:
-                                system_image_info = self.image_api.get(
-                                    context,
-                                    image_system_id)
-                                value = 'system_disk_delete'
-                                system_image_info['properties'][value] = True
-                                try:
-                                    self.image_api.update(context,
-                                                          image_system_id,
-                                                          system_image_info,
-                                                          data=None,
-                                                          purge_props=True)
-                                except exception.ImageNotAuthorized as e:
-                                    LOG.error(_LE('Update image: %s'), e)
+                                self.compute_rpcapi.\
+                                    delete_snapshot(context,
+                                                    instance,
+                                                    image_system_id)
+                            except Exception as e:
+                                LOG.error(_LE('delete snapshot: %s'), e)
                         else:
                             try:
                                 volume_snapshot = self.volume_api.get_snapshot(

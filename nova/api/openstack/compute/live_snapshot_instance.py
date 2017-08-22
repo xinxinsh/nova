@@ -98,7 +98,25 @@ class LiveSnapshotInstanceController(wsgi.Controller):
 
         LOG.info(_LI("Delete snapshot with id:%s"), id, context=context)
 
-        msg = self.compute_api.delete_vm_snapshot(context, id)
+        try:
+            image_service = glance.get_default_image_service()
+            image_meta = image_service.show(context, id)
+        except exception.NotFound:
+            msg = _("snapshot_id could not be found")
+            raise exc.HTTPNotFound(explanation=msg)
+
+        try:
+            vm_uuid = image_meta['properties']['instance_uuid']
+        except Exception:
+            msg = _("vm_uuid could not be found in snapshot")
+            raise exc.HTTPNotFound(explanation=msg)
+
+        instance = common.get_instance(self.compute_api,
+                                       context,
+                                       vm_uuid)
+
+        msg = self.compute_api.delete_vm_snapshot(context, instance,
+                                                  image_meta, id)
         if msg != '':
             self.compute_api.operation_log_about_instance(context, 'Failed')
             raise exc.HTTPNotFound(explanation=msg)
@@ -208,7 +226,7 @@ class LiveSnapshotInstanceController(wsgi.Controller):
             context,
             image['id'])
 
-        self.compute_api.update_snapshot_info(context, instance, image['id'])
+        # self.compute_api.update_snapshot_info(context, instance, image['id'])
 
         return {'snapshot': snapshot}
 

@@ -468,7 +468,8 @@ class ComputeRpcAPITestCase(test.NoDBTestCase):
 
     def test_snapshot_instance(self):
         self._test_compute_api('snapshot_instance', 'cast',
-                instance=self.fake_instance_obj, image_id='id')
+                instance=self.fake_instance_obj, image_id='id',
+                               real_snapshot=False)
 
     def test_start_instance(self):
         self._test_compute_api('start_instance', 'cast',
