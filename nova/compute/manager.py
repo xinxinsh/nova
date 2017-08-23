@@ -8086,6 +8086,8 @@ class ComputeManager(manager.Manager):
         if not is_rollback_memory and auto_start:
             self.compute_api.reboot(context, instance, 'HARD')
 
+        self.compute_api.operation_log_about_instance(context, 'Succeeded')
+
     def _check_available_status(self, context, volume_id,
                                 check_status='available',
                                 max_retry_count=900, sleep_per_time=2):
