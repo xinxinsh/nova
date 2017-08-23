@@ -6541,12 +6541,14 @@ class LibvirtDriver(driver.ComputeDriver):
              :free: How much space is free (in gigabytes)
              :used: How much space is used (in gigabytes)
         """
-
+        LOG.debug("Chinac begin to get local gb info")
         if CONF.libvirt.images_type == 'lvm':
             info = lvm.get_volume_group_info(
                 CONF.libvirt.images_volume_group)
         elif CONF.libvirt.images_type == 'rbd':
+            LOG.debug("Chinac waiting for get rbd pool info .....")
             info = LibvirtDriver._get_rbd_driver().get_pool_info()
+            LOG.debug("Chinac success get local gb info %s", str(info))
         elif CONF.libvirt.images_type == 'ussvd':
             import socket
             client = uclient()
