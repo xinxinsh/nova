@@ -62,11 +62,15 @@ class LiveMigrationTaskTestCase(test.NoDBTestCase):
         self.mox.StubOutWithMock(self.task, '_check_host_is_up')
         self.mox.StubOutWithMock(self.task, '_check_requested_destination')
         self.mox.StubOutWithMock(self.task, '_check_not_exist_direct_port')
+        self.mox.StubOutWithMock(self.task, '_check_volumes_state')
+        self.mox.StubOutWithMock(self.task, '_check_interfaces_state')
         self.mox.StubOutWithMock(self.task.compute_rpcapi, 'live_migration')
 
         self.task._check_host_is_up(self.instance_host)
         self.task._check_requested_destination()
         self.task._check_not_exist_direct_port(self.instance)
+        self.task._check_volumes_state()
+        self.task._check_interfaces_state(self.instance)
         self.task.compute_rpcapi.live_migration(self.context,
                 host=self.instance_host,
                 instance=self.instance,
@@ -86,11 +90,15 @@ class LiveMigrationTaskTestCase(test.NoDBTestCase):
         self.mox.StubOutWithMock(self.task, '_check_host_is_up')
         self.mox.StubOutWithMock(self.task, '_find_destination')
         self.mox.StubOutWithMock(self.task, '_check_not_exist_direct_port')
+        self.mox.StubOutWithMock(self.task, '_check_volumes_state')
+        self.mox.StubOutWithMock(self.task, '_check_interfaces_state')
         self.mox.StubOutWithMock(self.task.compute_rpcapi, 'live_migration')
 
         self.task._check_host_is_up(self.instance_host)
         self.task._find_destination().AndReturn("found_host")
         self.task._check_not_exist_direct_port(self.instance)
+        self.task._check_volumes_state()
+        self.task._check_interfaces_state(self.instance)
         self.task.compute_rpcapi.live_migration(self.context,
                 host=self.instance_host,
                 instance=self.instance,
