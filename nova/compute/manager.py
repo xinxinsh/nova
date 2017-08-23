@@ -8056,7 +8056,7 @@ class ComputeManager(manager.Manager):
         image_disk_snapshot_id = None
         for disk in rollback_snapshot_list:
             disk_snapshot_id = disk.get('disk_snapshot_id')
-            device_name = disk.get('device_name')
+            # device_name = disk.get('device_name')
             source_volume_id = disk.get('source_volume_id')
             source_image_id = disk.get('source_image_id')
             # rollback vm from volume
@@ -8065,23 +8065,9 @@ class ComputeManager(manager.Manager):
                 volume_attachments = volume.get('attachments')
                 LOG.info('attachments(%s)', volume_attachments)
                 if volume_attachments and instance.uuid in volume_attachments:
-                    if volume.get('status') == 'in-use':
-                        LOG.debug('detach volume(%s) from instance(%s)',
-                                  source_volume_id, instance.uuid)
-                        self.compute_api.detach_volume(context,
-                                                       instance, volume)
-                    if self._check_available_status(context, source_volume_id):
-                        self.volume_api.snapshot_rollback(context,
-                                                          disk_snapshot_id)
-                    if self._check_available_status(context, source_volume_id):
-                        LOG.debug('attach volume(%s) to instance(%s)',
-                                  source_volume_id,
-                                  instance.uuid)
-                        self.compute_api.attach_volume(context,
-                                                       instance,
-                                                       source_volume_id,
-                                                       device_name)
-                        time.sleep(3)
+                    self.volume_api.snapshot_rollback(context,
+                                                      disk_snapshot_id, True)
+                    # time.sleep(3)
             # rollback vm from image put last
             if source_image_id and disk_snapshot_id:
                 image_disk_snapshot_id = disk_snapshot_id
