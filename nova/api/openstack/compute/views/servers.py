@@ -298,6 +298,11 @@ class ViewBuilderV21(ViewBuilder):
                                          self._collection_name),
             },
         }
+        if "system_metadata" in instance and "is_resize" in \
+                instance.system_metadata:
+            server["server"]["is_resize"] = instance.\
+                system_metadata.get("is_resize")
+
         if server["server"]["status"] in self._fault_statuses:
             _inst_fault = self._get_fault(request, instance)
             if _inst_fault:

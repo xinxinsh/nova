@@ -45,6 +45,9 @@ class MigrateServerController(wsgi.Controller):
         authorize(context, action='migrate')
 
         instance = common.get_instance(self.compute_api, context, id)
+        if "system_metadata" in instance:
+            instance.system_metadata['is_resize'] = 'False'
+            instance.save()
         try:
             self.compute_api.resize(req.environ['nova.context'], instance)
         except (exception.TooManyInstances, exception.QuotaError) as e:

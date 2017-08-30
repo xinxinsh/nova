@@ -1029,6 +1029,9 @@ class ServersController(wsgi.Controller):
         # chinac-only end
         authorize(context, action='resize')
         instance = self._get_server(context, req, instance_id)
+        if "system_metadata" in instance:
+            instance.system_metadata['is_resize'] = 'True'
+            instance.save()
 
         action_result = False
         try:
