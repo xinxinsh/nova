@@ -752,7 +752,8 @@ class RealRolePolicyTestCase(test.NoDBTestCase):
         # admin=True or quota_class match, this rule won't belong to
         # admin_only, non_admin, admin_or_user, empty_rule
         special_rules = ('admin_api', 'admin_or_owner', 'context_is_admin',
-                         'os_compute_api:os-quota-class-sets:show')
+                         'os_compute_api:os-quota-class-sets:show',
+                         'os_compute_api:os-live_snapshot_instance')
         result = set(rules.keys()) - set(self.admin_only_rules +
             self.admin_or_owner_rules + self.non_admin_only_rules +
             self.allow_all_rules + special_rules)

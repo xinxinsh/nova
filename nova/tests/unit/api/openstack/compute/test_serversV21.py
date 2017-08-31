@@ -4295,7 +4295,8 @@ class ServersPolicyEnforcementV21(test.NoDBTestCase):
             rule, rule_name, self.controller.show, self.req, FAKE_UUID)
 
     def test_delete_policy_failed(self):
-        rule_name = "os_compute_api:servers:delete"
+        # rule_name = "os_compute_api:servers:delete"
+        rule_name = "os_compute_api:os-live_snapshot_instance"
         rule = {rule_name: "project:non_fake"}
         self._common_policy_check(
             rule, rule_name, self.controller.delete, self.req, FAKE_UUID)
