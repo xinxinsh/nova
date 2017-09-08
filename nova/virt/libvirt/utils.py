@@ -561,14 +561,18 @@ def initialize_connection(virt_dom):
         for host in source.findall('host'):
             mons.append(host.get('name'))
             ports.append(host.get('port'))
-        auth = disk.find('auth')
-        rbd_user = auth.get('username')
-        sercret_uuid = auth.find('secret').get('uuid')
-        sercret_type = auth.find('secret').get('type')
-        keyring_path = ("/etc/ceph/%s.client.%s.keyring" %
-                                ("ceph", CONF.libvirt.rbd_user))
-        with open(keyring_path, 'r') as keyring_file:
-            keyring = keyring_file.read()
+        rbd_user = CONF.libvirt.rbd_user
+        sercret_uuid = CONF.libvirt.rbd_secret_uuid
+        sercret_type = "ceph"
+        keyring = None
+        if rbd_user is None:
+            raise RuntimeError(_("Please Specify rbd_user for backup"))
+        else:
+            keyring_path = ("/etc/ceph/%s.client.%s.keyring" %
+                                ("ceph", rbd_user))
+            if os.path.isfile(keyring_path):
+                with open(keyring_path, 'r') as keyring_file:
+                    keyring = keyring_file.read()
         data = {
             'driver_volume_type': 'rbd',
             'data': {
